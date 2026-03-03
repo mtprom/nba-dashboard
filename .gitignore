@@ -1,0 +1,31 @@
+# Generated planning files
+NBA_Analytics_Dashboard_Architecture.md
+NBA_Dashboard_Timeline.docx
+
+# .NET build output
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.log
+
+# EF Core migrations lock
+*.db
+*.db-shm
+*.db-wal
+
+# Environment secrets
+.env
+*.env.local
+
+# User secrets
+**/secrets.json
+
+# Frontend
+nba-dashboard/nba-frontend/node_modules/
+nba-dashboard/nba-frontend/dist/
+nba-dashboard/nba-frontend/.vite/
+
+# macOS
+.DS_Store
