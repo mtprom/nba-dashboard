@@ -137,7 +137,7 @@ public class SyncBoxScoresJob
             {
                 Id            = gameId,
                 SeasonId      = season.Id,
-                Date          = date.ToDateTime(TimeOnly.MinValue),
+                Date          = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
                 Status        = "Final",
                 HomeTeamId    = trad.HomeTeamId,
                 VisitorTeamId = trad.AwayTeamId,
