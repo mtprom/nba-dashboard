@@ -8,7 +8,7 @@ public class NbaStatsClient
 {
     private readonly ILogger<NbaStatsClient> _logger;
     private static readonly SemaphoreSlim _throttle = new(1, 1);
-    private static readonly TimeSpan _delay = TimeSpan.FromMilliseconds(5000);
+    private static readonly TimeSpan _delay = TimeSpan.FromMilliseconds(2500);
     private const string BaseUrl = "https://stats.nba.com/stats";
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -48,7 +48,7 @@ public class NbaStatsClient
             psi.ArgumentList.Add("-s");
             psi.ArgumentList.Add("--compressed");
             psi.ArgumentList.Add("--max-time");
-            psi.ArgumentList.Add("15");
+            psi.ArgumentList.Add("30");
 
             foreach (var (key, value) in NbaStatsHeaders.Default)
             {

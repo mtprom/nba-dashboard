@@ -27,6 +27,7 @@ builder.ConfigureServices((context, services) =>
 
     services.AddScoped<SyncBoxScoresJob>();
     services.AddScoped<HistoricalBackfillJob>();
+    services.AddScoped<SyncSeasonAveragesJob>();
 
     services.AddHangfire(config => config
         .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
@@ -45,11 +46,21 @@ using (var scope = host.Services.CreateScope())
     var backfill = scope.ServiceProvider.GetRequiredService<HistoricalBackfillJob>();
     await backfill.RunAsync();
 
+    // Run season averages backfill after box scores are populated
+    var seasonAvg = scope.ServiceProvider.GetRequiredService<SyncSeasonAveragesJob>();
+    await seasonAvg.RunAsync();
+
     // Schedule nightly box score sync at 3:00 AM going forward
     RecurringJob.AddOrUpdate<SyncBoxScoresJob>(
         "sync-box-scores",
         job => job.RunAsync(null, CancellationToken.None),
         "0 3 * * *");
+
+    // Schedule nightly season averages sync at 4:00 AM going forward
+    RecurringJob.AddOrUpdate<SyncSeasonAveragesJob>(
+        "sync-season-averages",
+        job => job.SyncCurrentSeasonAsync(CancellationToken.None),
+        "0 4 * * *");
 }
 
 host.Run();
