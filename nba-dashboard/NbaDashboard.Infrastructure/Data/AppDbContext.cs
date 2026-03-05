@@ -33,6 +33,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Team>(entity =>
         {
             entity.HasKey(t => t.Id);
+            entity.Property(t => t.Id).ValueGeneratedNever();
             entity.Property(t => t.Name).IsRequired().HasMaxLength(100);
             entity.Property(t => t.Abbreviation).HasMaxLength(10);
             entity.Property(t => t.City).HasMaxLength(100);
@@ -45,6 +46,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Player>(entity =>
         {
             entity.HasKey(p => p.Id);
+            entity.Property(p => p.Id).ValueGeneratedNever();
             entity.Property(p => p.FirstName).HasMaxLength(100);
             entity.Property(p => p.LastName).HasMaxLength(100);
             entity.Property(p => p.Position).HasMaxLength(10);

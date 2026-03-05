@@ -40,6 +40,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Default: "Host=db;Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD}"
       NbaStats__ThrottleMs: ${NBA_THROTTLE_MS}
+      NbaStats__BackfillStartDate: ${NBA_BACKFILL_START_DATE}
     depends_on:
       db:
         condition: service_healthy
