@@ -6,7 +6,7 @@ NBA stats dashboard built on top of stats.nba.com. Pulls real game data, box sco
 
 - **Backend:** ASP.NET Core 8 Web API
 - **Database:** PostgreSQL 16 via Entity Framework Core
-- **Ingestion:** .NET Worker Service pulling from stats.nba.com
+- **Ingestion:** .NET Worker Service curl pulling from stats.nba.com
 - **Frontend:** React 18 + Vite + Recharts
 - **Deployment:** Docker Compose (local), AWS (prod target)
 
