@@ -157,7 +157,8 @@ public class SyncBoxScoresJob
         // Upsert PlayerGameStats for both teams
         var allTradPlayers = trad.HomeTeam.Players
             .Select(p => (player: p, teamId: trad.HomeTeam.TeamId))
-            .Concat(trad.AwayTeam.Players.Select(p => (player: p, teamId: trad.AwayTeam.TeamId)));
+            .Concat(trad.AwayTeam.Players.Select(p => (player: p, teamId: trad.AwayTeam.TeamId)))
+            .DistinctBy(x => x.player.PersonId);
 
         foreach (var (p, teamId) in allTradPlayers)
         {
@@ -213,7 +214,8 @@ public class SyncBoxScoresJob
 
         var allAdvPlayers = adv.HomeTeam.Players
             .Select(p => (player: p, teamId: adv.HomeTeam.TeamId))
-            .Concat(adv.AwayTeam.Players.Select(p => (player: p, teamId: adv.AwayTeam.TeamId)));
+            .Concat(adv.AwayTeam.Players.Select(p => (player: p, teamId: adv.AwayTeam.TeamId)))
+            .DistinctBy(x => x.player.PersonId);
 
         foreach (var (p, teamId) in allAdvPlayers)
         {
