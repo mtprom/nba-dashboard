@@ -15,7 +15,10 @@ builder.ConfigureServices((context, services) =>
 
     services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connStr));
 
-    services.AddHttpClient<NbaStatsClient>().ConfigurePrimaryHttpMessageHandler(() =>
+    services.AddHttpClient<NbaStatsClient>(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(15);
+    }).ConfigurePrimaryHttpMessageHandler(() =>
     {
         var handler = new HttpClientHandler();
         NbaStatsHeaders.ConfigureHandler(handler);
