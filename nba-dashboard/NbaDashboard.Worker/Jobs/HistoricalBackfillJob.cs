@@ -11,7 +11,7 @@ public class HistoricalBackfillJob
     private readonly SyncBoxScoresJob _syncJob;
     private readonly AppDbContext _db;
     private readonly ILogger<HistoricalBackfillJob> _logger;
-    private readonly DateOnly _seasonStart;
+    private readonly int _startSeasonYear;
 
     public HistoricalBackfillJob(SyncBoxScoresJob syncJob, AppDbContext db,
         ILogger<HistoricalBackfillJob> logger, IConfiguration config)
@@ -21,47 +21,44 @@ public class HistoricalBackfillJob
         _logger = logger;
 
         // Configurable via NbaStats__BackfillStartDate env var; defaults to 2024-25 season open
-        var startStr = config["NbaStats:BackfillStartDate"] ?? "2024-10-22";
-        _seasonStart = DateOnly.Parse(startStr);
+        var startDate = DateOnly.Parse(config["NbaStats:BackfillStartDate"] ?? "2024-10-22");
+        _startSeasonYear = startDate.Month >= 10 ? startDate.Year : startDate.Year - 1;
     }
 
     public async Task RunAsync(CancellationToken ct = default)
     {
-        var yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
+        var now = DateTime.UtcNow;
+        int currentSeasonYear = now.Month >= 10 ? now.Year : now.Year - 1;
 
-        // Resume from cursor if a previous run was interrupted
-        var cursorState = await _db.SyncStates
-            .FirstOrDefaultAsync(s => s.Key == "backfill_date_cursor", ct);
+        _logger.LogInformation("Starting historical backfill: seasons {Start}-{End}",
+            $"{_startSeasonYear}-{(_startSeasonYear + 1) % 100:D2}",
+            $"{currentSeasonYear}-{(currentSeasonYear + 1) % 100:D2}");
 
-        var startDate = cursorState != null
-            ? DateOnly.Parse(cursorState.Value).AddDays(1)
-            : _seasonStart;
-
-        if (startDate > yesterday)
-        {
-            _logger.LogInformation("Historical backfill already complete through {Date}", yesterday);
-            return;
-        }
-
-        _logger.LogInformation("Starting historical backfill from {Start} to {End}",
-            startDate, yesterday);
-
-        for (var date = startDate; date <= yesterday; date = date.AddDays(1))
+        for (int year = _startSeasonYear; year <= currentSeasonYear; year++)
         {
             ct.ThrowIfCancellationRequested();
 
-            _logger.LogInformation("Backfilling {Date}", date);
-            await _syncJob.RunAsync(date, ct);
-
-            // Update cursor so we can resume if interrupted
-            if (cursorState == null)
+            var cursorKey = $"backfill_season_{year}";
+            if (await _db.SyncStates.AnyAsync(s => s.Key == cursorKey, ct))
             {
-                cursorState = new SyncState { Key = "backfill_date_cursor" };
-                _db.SyncStates.Add(cursorState);
+                _logger.LogInformation("Season {Year}-{Next} already backfilled, skipping",
+                    year, (year + 1) % 100);
+                continue;
             }
-            cursorState.Value = date.ToString("yyyy-MM-dd");
-            cursorState.UpdatedAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync(ct);
+
+            await _syncJob.RunForSeasonAsync(year, ct);
+
+            // Mark completed seasons (not the current one — it may have new games)
+            if (year < currentSeasonYear)
+            {
+                _db.SyncStates.Add(new SyncState
+                {
+                    Key = cursorKey,
+                    Value = "done",
+                    UpdatedAt = DateTime.UtcNow,
+                });
+                await _db.SaveChangesAsync(ct);
+            }
         }
 
         _logger.LogInformation("Historical backfill complete");

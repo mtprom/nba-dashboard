@@ -310,6 +310,84 @@ public class SyncBoxScoresJob
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task RunForSeasonAsync(int seasonStartYear, CancellationToken ct = default)
+    {
+        var seasonStr = $"{seasonStartYear}-{(seasonStartYear + 1) % 100:D2}";
+        _logger.LogInformation("Fetching all games for season {Season}", seasonStr);
+
+        var finderResp = await _nba.GetAsync<LeagueGameFinderResponse>(
+            "leaguegamefinder",
+            new Dictionary<string, string>
+            {
+                ["LeagueID"]   = "00",
+                ["Season"]     = seasonStr,
+                ["SeasonType"] = "Regular Season",
+            },
+            ct);
+
+        var resultSet = finderResp?.ResultSets?.FirstOrDefault();
+        if (resultSet == null || resultSet.RowSet.Count == 0)
+        {
+            _logger.LogInformation("No games found for season {Season}", seasonStr);
+            return;
+        }
+
+        var headers = resultSet.Headers;
+        int gameIdIdx   = headers.IndexOf("GAME_ID");
+        int gameDateIdx = headers.IndexOf("GAME_DATE");
+        int seasonIdIdx = headers.IndexOf("SEASON_ID");
+
+        var games = resultSet.RowSet
+            .GroupBy(row => row[gameIdIdx].GetString()!)
+            .Select(g => (
+                GameId: g.Key,
+                Date: DateOnly.Parse(g.First()[gameDateIdx].GetString()!)
+            ))
+            .OrderBy(g => g.Date)
+            .ToList();
+
+        _logger.LogInformation("Found {Count} unique games for season {Season}", games.Count, seasonStr);
+
+        var seasonIdStr = resultSet.RowSet[0][seasonIdIdx].GetString()!;
+        var seasonYear = int.Parse(seasonIdStr.TrimStart('2'));
+        var season = await UpsertSeasonAsync(seasonYear, ct);
+
+        int synced = 0;
+        foreach (var (gameId, date) in games)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var syncKey = $"boxscore_{gameId}";
+            if (await _db.SyncStates.AnyAsync(s => s.Key == syncKey, ct))
+            {
+                synced++;
+                continue;
+            }
+
+            try
+            {
+                await SyncGameAsync(gameId, season, date, ct);
+
+                _db.SyncStates.Add(new SyncState
+                {
+                    Key       = syncKey,
+                    Value     = "done",
+                    UpdatedAt = DateTime.UtcNow,
+                });
+                await _db.SaveChangesAsync(ct);
+                synced++;
+                _logger.LogInformation("Synced {GameId} ({Synced}/{Total})", gameId, synced, games.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to sync game {GameId}", gameId);
+            }
+        }
+
+        _logger.LogInformation("Season {Season} complete: {Synced}/{Total} games synced",
+            seasonStr, synced, games.Count);
+    }
+
     // Converts a date to NBA season string e.g. date in 2024-25 season → "2024-25"
     private static string SeasonStringForDate(DateOnly date)
     {
