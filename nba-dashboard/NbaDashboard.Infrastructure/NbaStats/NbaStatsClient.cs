@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
@@ -5,7 +6,6 @@ namespace NbaDashboard.Infrastructure.NbaStats;
 
 public class NbaStatsClient
 {
-    private readonly HttpClient _httpClient;
     private readonly ILogger<NbaStatsClient> _logger;
     private static readonly SemaphoreSlim _throttle = new(1, 1);
     private static readonly TimeSpan _delay = TimeSpan.FromMilliseconds(5000);
@@ -18,11 +18,7 @@ public class NbaStatsClient
 
     public NbaStatsClient(HttpClient httpClient, ILogger<NbaStatsClient> logger)
     {
-        _httpClient = httpClient;
         _logger = logger;
-
-        foreach (var (key, value) in NbaStatsHeaders.Default)
-            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation(key, value);
     }
 
     public async Task<T?> GetAsync<T>(string endpoint, Dictionary<string, string>? parameters = null,
@@ -42,13 +38,38 @@ public class NbaStatsClient
 
             _logger.LogInformation("GET {Url}", url);
 
-            var response = await _httpClient.GetAsync(url, ct);
-            response.EnsureSuccessStatusCode();
+            var psi = new ProcessStartInfo("curl")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("-s");
+            psi.ArgumentList.Add("--compressed");
+            psi.ArgumentList.Add("--max-time");
+            psi.ArgumentList.Add("15");
 
-            var json = await response.Content.ReadAsStringAsync(ct);
+            foreach (var (key, value) in NbaStatsHeaders.Default)
+            {
+                psi.ArgumentList.Add("-H");
+                psi.ArgumentList.Add($"{key}: {value}");
+            }
+            psi.ArgumentList.Add(url);
+
+            var process = Process.Start(psi)!;
+            var json = await process.StandardOutput.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+
+            if (process.ExitCode != 0)
+            {
+                var stderr = await process.StandardError.ReadToEndAsync(ct);
+                throw new HttpRequestException($"curl failed (exit {process.ExitCode}): {stderr}");
+            }
+
             return JsonSerializer.Deserialize<T>(json, _jsonOptions);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Request failed for {Endpoint}", endpoint);
             throw;
