@@ -34,7 +34,7 @@ public class HistoricalBackfillJob
             $"{_startSeasonYear}-{(_startSeasonYear + 1) % 100:D2}",
             $"{currentSeasonYear}-{(currentSeasonYear + 1) % 100:D2}");
 
-        for (int year = _startSeasonYear; year <= currentSeasonYear; year++)
+        for (int year = currentSeasonYear; year >= _startSeasonYear; year--)
         {
             ct.ThrowIfCancellationRequested();
 

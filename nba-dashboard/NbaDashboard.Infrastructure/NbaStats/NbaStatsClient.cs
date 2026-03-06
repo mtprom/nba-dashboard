@@ -8,7 +8,7 @@ public class NbaStatsClient
 {
     private readonly ILogger<NbaStatsClient> _logger;
     private static readonly SemaphoreSlim _throttle = new(1, 1);
-    private static readonly TimeSpan _delay = TimeSpan.FromMilliseconds(5000);
+    private static readonly TimeSpan _delay = TimeSpan.FromMilliseconds(4000);
     private const string BaseUrl = "https://stats.nba.com/stats";
 
     private static readonly JsonSerializerOptions _jsonOptions = new()

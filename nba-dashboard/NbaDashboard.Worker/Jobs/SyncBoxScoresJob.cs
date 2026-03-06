@@ -345,7 +345,7 @@ public class SyncBoxScoresJob
                 GameId: g.Key,
                 Date: DateOnly.Parse(g.First()[gameDateIdx].GetString()!)
             ))
-            .OrderBy(g => g.Date)
+            .OrderByDescending(g => g.Date)
             .ToList();
 
         _logger.LogInformation("Found {Count} unique games for season {Season}", games.Count, seasonStr);
