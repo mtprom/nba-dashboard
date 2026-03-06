@@ -9,8 +9,11 @@ public class NbaStatsClient
     private readonly ILogger<NbaStatsClient> _logger;
     private static readonly SemaphoreSlim _throttle = new(1, 1);
     private static readonly Random _rng = new();
-    private const int MinDelayMs = 5000;
-    private const int MaxDelayMs = 8000;
+    private const int MinDelayMs = 4000;
+    private const int MaxDelayMs = 6000;
+    private const int CooldownIntervalMs = 5 * 60 * 1000; // 5 minutes
+    private const int CooldownDurationMs = 30_000;         // 30 seconds
+    private static readonly Stopwatch _sessionTimer = Stopwatch.StartNew();
     private const string BaseUrl = "https://stats.nba.com/stats";
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -78,6 +81,12 @@ public class NbaStatsClient
         }
         finally
         {
+            if (_sessionTimer.ElapsedMilliseconds >= CooldownIntervalMs)
+            {
+                _logger.LogInformation("Cooldown: pausing {Seconds}s", CooldownDurationMs / 1000);
+                await Task.Delay(CooldownDurationMs, ct);
+                _sessionTimer.Restart();
+            }
             await Task.Delay(_rng.Next(MinDelayMs, MaxDelayMs + 1), ct);
             _throttle.Release();
         }
