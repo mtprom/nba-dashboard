@@ -60,7 +60,7 @@ public class SyncBoxScoresJob
 
         // 2. Ensure season exists (derive year from SEASON_ID e.g. "22024" → 2024)
         var seasonIdStr = resultSet.RowSet[0][seasonIdIdx].GetString()!;
-        var seasonYear = int.Parse(seasonIdStr.TrimStart('2')); // "22024" → "2024"
+        var seasonYear = int.Parse(seasonIdStr[1..]); // "22024" → "2024"
         var season = await UpsertSeasonAsync(seasonYear, ct);
 
         // 3. For each game: fetch traditional + advanced, save everything
@@ -351,7 +351,7 @@ public class SyncBoxScoresJob
         _logger.LogInformation("Found {Count} unique games for season {Season}", games.Count, seasonStr);
 
         var seasonIdStr = resultSet.RowSet[0][seasonIdIdx].GetString()!;
-        var seasonYear = int.Parse(seasonIdStr.TrimStart('2'));
+        var seasonYear = int.Parse(seasonIdStr[1..]);
         var season = await UpsertSeasonAsync(seasonYear, ct);
 
         int synced = 0;
