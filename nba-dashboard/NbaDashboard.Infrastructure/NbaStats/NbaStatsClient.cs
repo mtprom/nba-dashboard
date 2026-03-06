@@ -8,7 +8,9 @@ public class NbaStatsClient
 {
     private readonly ILogger<NbaStatsClient> _logger;
     private static readonly SemaphoreSlim _throttle = new(1, 1);
-    private static readonly TimeSpan _delay = TimeSpan.FromMilliseconds(4000);
+    private static readonly Random _rng = new();
+    private const int MinDelayMs = 5000;
+    private const int MaxDelayMs = 8000;
     private const string BaseUrl = "https://stats.nba.com/stats";
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -76,7 +78,7 @@ public class NbaStatsClient
         }
         finally
         {
-            await Task.Delay(_delay, ct);
+            await Task.Delay(_rng.Next(MinDelayMs, MaxDelayMs + 1), ct);
             _throttle.Release();
         }
     }
