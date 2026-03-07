@@ -263,6 +263,10 @@ public class SyncBoxScoresJob
 
     private async Task UpsertTeamAsync(int id, string city, string name, string tricode, CancellationToken ct)
     {
+        city ??= "";
+        name ??= "";
+        tricode ??= "";
+
         var team = await _db.Teams.FindAsync([id], ct);
         if (team == null)
         {
@@ -271,14 +275,16 @@ public class SyncBoxScoresJob
                 Id           = id,
                 City         = city,
                 Name         = name,
-                FullName     = $"{city} {name}",
+                FullName     = $"{city} {name}".Trim(),
                 Abbreviation = tricode,
                 UpdatedAt    = DateTime.UtcNow,
             });
         }
         else
         {
-            team.Abbreviation = tricode;
+            if (!string.IsNullOrEmpty(tricode)) team.Abbreviation = tricode;
+            if (!string.IsNullOrEmpty(name)) { team.Name = name; team.FullName = $"{city} {name}".Trim(); }
+            if (!string.IsNullOrEmpty(city)) team.City = city;
             team.UpdatedAt    = DateTime.UtcNow;
         }
         await _db.SaveChangesAsync(ct);
@@ -287,6 +293,11 @@ public class SyncBoxScoresJob
     private async Task UpsertPlayerAsync(int id, string firstName, string familyName,
         string position, string jerseyNum, int teamId, CancellationToken ct)
     {
+        firstName ??= "";
+        familyName ??= "";
+        position ??= "";
+        jerseyNum ??= "";
+
         var player = await _db.Players.FindAsync([id], ct);
         if (player == null)
         {
