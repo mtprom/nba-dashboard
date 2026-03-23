@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using NbaDashboard.Api.DTOs;
 using NbaDashboard.Infrastructure.Data;
 using NbaDashboard.Infrastructure.NbaStats;
 
@@ -18,7 +19,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
-builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
+builder.Services.AddAutoMapper(typeof(MappingProfile));
 builder.Services.AddMemoryCache();
 
 builder.Services.AddHttpClient<NbaStatsClient>(client =>
@@ -33,12 +34,23 @@ builder.Services.AddHttpClient<NbaStatsClient>(client =>
 
 var app = builder.Build();
 
+if (app.Environment.IsDevelopment())
+    app.UseDeveloperExceptionPage();
+
 // Auto-run migrations on startup (skipped in test environment which uses SQLite)
 if (!app.Environment.IsEnvironment("Testing"))
 {
-    using var scope = app.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.MigrateAsync();
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.MigrateAsync();
+    }
+    catch (Exception ex)
+    {
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+        logger.LogError(ex, "Database migration failed on startup — app will continue without migrations");
+    }
 }
 
 app.UseCors("Frontend");

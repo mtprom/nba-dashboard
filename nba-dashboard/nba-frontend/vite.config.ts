@@ -18,6 +18,15 @@ export default defineConfig({
       "/api": {
         target: process.env.API_URL ?? "http://192.168.1.150:5000",
         changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on("error", (err, _req, res) => {
+            console.error("[proxy error]", err.message)
+            if ("headersSent" in res && !res.headersSent) {
+              res.writeHead(502, { "Content-Type": "application/json" })
+              res.end(JSON.stringify({ error: "Proxy error: " + err.message }))
+            }
+          })
+        },
       },
     },
   },
