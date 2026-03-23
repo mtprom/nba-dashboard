@@ -16,18 +16,27 @@ export default function GamePreviewPage() {
 
   useEffect(() => {
     async function load() {
-      const gamesData = await getUpcomingGames()
-      setGames(gamesData)
+      try {
+        const gamesData = await getUpcomingGames()
+        setGames(gamesData)
 
-      const teamIds = [
-        ...new Set(
-          gamesData.flatMap((g) => [g.game.homeTeamId, g.game.visitorTeamId])
-        ),
-      ]
-      const averages =
-        teamIds.length > 0 ? await getSeasonAverages(teamIds) : {}
-      setSeasonAverages(averages)
-      setLoading(false)
+        const teamIds = [
+          ...new Set(
+            gamesData.flatMap((g) => [g.game.homeTeamId, g.game.visitorTeamId])
+          ),
+        ]
+        try {
+          const averages =
+            teamIds.length > 0 ? await getSeasonAverages(teamIds) : {}
+          setSeasonAverages(averages)
+        } catch {
+          console.warn("Failed to load season averages")
+        }
+      } catch (err) {
+        console.error("Failed to load games", err)
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [])

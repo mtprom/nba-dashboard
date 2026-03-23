@@ -1,6 +1,10 @@
+import dns from "node:dns"
 import path from "path"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
+
+// Force IPv4 lookup — Vite's http-proxy fails with EHOSTUNREACH on some networks
+dns.setDefaultResultOrder("ipv4first")
 
 export default defineConfig({
   plugins: [react()],
@@ -11,7 +15,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": process.env.API_URL ?? "http://localhost:5000",
+      "/api": {
+        target: process.env.API_URL ?? "http://192.168.1.150:5000",
+        changeOrigin: true,
+      },
     },
   },
 })
