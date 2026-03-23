@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "API",
+      "runtimeExecutable": "/usr/local/share/dotnet/dotnet",
+      "runtimeArgs": ["run", "--project", "nba-dashboard/NbaDashboard.Api"],
+      "port": 5000
+    },
+    {
+      "name": "Worker",
+      "runtimeExecutable": "/usr/local/share/dotnet/dotnet",
+      "runtimeArgs": ["run", "--project", "nba-dashboard/NbaDashboard.Worker"],
+      "port": 8080
+    },
+    {
+      "name": "Frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "nba-dashboard/nba-frontend", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}
