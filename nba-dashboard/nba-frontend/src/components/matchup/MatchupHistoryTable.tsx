@@ -30,10 +30,12 @@ export default function MatchupHistoryTable({ games }: MatchupHistoryTableProps)
           const winner = homeWon ? mg.homeTeam : mg.visitorTeam
           const winnerColors = getTeamColors(winner.id)
 
-          const dateStr = new Date(mg.game.date).toLocaleDateString("en-US", {
+          const d = new Date(mg.game.date)
+          const dateStr = d.toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
             year: "numeric",
+            timeZone: "UTC",
           })
 
           return (

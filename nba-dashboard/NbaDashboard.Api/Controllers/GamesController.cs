@@ -112,9 +112,11 @@ public class GamesController : ControllerBase
             .ToDictionaryAsync(t => t.Id, ct);
 
         var result = new List<UpcomingGameDto>();
+        var seen = new HashSet<string>();
         foreach (var row in gameHeader.RowSet)
         {
             var gameId = row[gameIdIdx].GetString() ?? "";
+            if (!seen.Add(gameId)) continue;
             var homeTeamId = row[homeTeamIdx].GetInt32();
             var visitorTeamId = row[visitorTeamIdx].GetInt32();
             var statusText = row[statusIdx].GetString() ?? "";
