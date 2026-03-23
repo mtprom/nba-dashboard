@@ -23,7 +23,7 @@ public class NbaStatsClient
         _logger = logger;
     }
 
-    public async Task<T?> GetAsync<T>(string endpoint, Dictionary<string, string>? parameters = null,
+    public virtual async Task<T?> GetAsync<T>(string endpoint, Dictionary<string, string>? parameters = null,
         CancellationToken ct = default)
     {
         await _throttle.WaitAsync(ct);

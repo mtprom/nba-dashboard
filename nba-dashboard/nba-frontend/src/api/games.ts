@@ -1,19 +1,31 @@
+import { apiClient } from "./client"
 import type { UpcomingGame, MatchupHistory, PlayerSeasonAvg } from "@/types"
-import { MOCK_UPCOMING_GAMES } from "@/data/mock-upcoming-games"
-import { MOCK_MATCHUP_HISTORY, MOCK_SEASON_AVERAGES } from "@/data/mock-matchup-history"
 
 export async function getUpcomingGames(): Promise<UpcomingGame[]> {
-  return MOCK_UPCOMING_GAMES
+  const { data } = await apiClient.get<UpcomingGame[]>("/api/games/upcoming")
+  return data
 }
 
 export async function getMatchupHistory(
   teamId: number,
   opponentId: number
 ): Promise<MatchupHistory | null> {
-  const k = [teamId, opponentId].sort((a, b) => a - b).join("-")
-  return MOCK_MATCHUP_HISTORY[k] ?? null
+  try {
+    const { data } = await apiClient.get<MatchupHistory>(
+      `/api/teams/${teamId}/matchup/${opponentId}`
+    )
+    return data
+  } catch {
+    return null
+  }
 }
 
-export async function getSeasonAverages(): Promise<Record<number, PlayerSeasonAvg>> {
-  return MOCK_SEASON_AVERAGES
+export async function getSeasonAverages(
+  teamIds: number[]
+): Promise<Record<number, PlayerSeasonAvg>> {
+  const { data } = await apiClient.get<Record<number, PlayerSeasonAvg>>(
+    "/api/players/season-averages",
+    { params: { teamIds: teamIds.join(",") } }
+  )
+  return data
 }

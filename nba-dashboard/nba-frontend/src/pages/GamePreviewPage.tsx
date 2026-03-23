@@ -16,11 +16,16 @@ export default function GamePreviewPage() {
 
   useEffect(() => {
     async function load() {
-      const [gamesData, averages] = await Promise.all([
-        getUpcomingGames(),
-        getSeasonAverages(),
-      ])
+      const gamesData = await getUpcomingGames()
       setGames(gamesData)
+
+      const teamIds = [
+        ...new Set(
+          gamesData.flatMap((g) => [g.game.homeTeamId, g.game.visitorTeamId])
+        ),
+      ]
+      const averages =
+        teamIds.length > 0 ? await getSeasonAverages(teamIds) : {}
       setSeasonAverages(averages)
       setLoading(false)
     }
