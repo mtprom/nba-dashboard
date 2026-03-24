@@ -76,10 +76,21 @@ public class SyncStandingsJob
             var teamId = row[idx["TeamID"]].GetInt32();
 
             // Skip if team doesn't exist in our DB
-            if (await _db.Teams.FindAsync([teamId], ct) == null)
+            var team = await _db.Teams.FindAsync([teamId], ct);
+            if (team == null)
             {
                 _logger.LogDebug("Team {TeamId} not in DB, skipping standings row", teamId);
                 continue;
+            }
+
+            // Backfill team conference/division from standings data if missing
+            var conference = Str(row, idx, "Conference");
+            var division = idx.ContainsKey("Division") ? Str(row, idx, "Division") : "";
+            if (!string.IsNullOrEmpty(conference))
+            {
+                team.Conference = conference;
+                team.Division = division;
+                team.UpdatedAt = DateTime.UtcNow;
             }
 
             var snapshot = await _db.StandingsSnapshots

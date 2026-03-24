@@ -28,7 +28,7 @@ export default function StandingsPage() {
   const eastern = useMemo(
     () =>
       standings
-        .filter((s) => s.conference === "East")
+        .filter((s) => s.conference.toLowerCase().startsWith("east"))
         .sort((a, b) => a.confRank - b.confRank),
     [standings]
   )
@@ -36,7 +36,7 @@ export default function StandingsPage() {
   const western = useMemo(
     () =>
       standings
-        .filter((s) => s.conference === "West")
+        .filter((s) => s.conference.toLowerCase().startsWith("west"))
         .sort((a, b) => a.confRank - b.confRank),
     [standings]
   )
