@@ -10,6 +10,7 @@ export default defineConfig({
     },
   },
   server: {
+    allowedHosts: ["nba.mtprom.dev"],
     proxy: {
       "/api": {
         target: "http://api:8080",
