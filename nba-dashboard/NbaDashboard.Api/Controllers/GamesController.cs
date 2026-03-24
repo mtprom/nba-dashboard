@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -13,6 +15,7 @@ namespace NbaDashboard.Api.Controllers;
 [Route("api/[controller]")]
 public class GamesController : ControllerBase
 {
+    private static readonly TimeZoneInfo Eastern = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
     private readonly NbaStatsClient _nba;
     private readonly AppDbContext _db;
     private readonly IMemoryCache _cache;
@@ -180,9 +183,7 @@ public class GamesController : ControllerBase
             scores.TryGetValue((gameId, visitorTeamId), out var visitorScore);
 
             var status = MapStatus(statusText);
-            var date = DateTime.TryParse(dateRaw, out var parsed)
-                ? parsed.ToUniversalTime().ToString("O")
-                : DateTime.UtcNow.Date.ToString("O");
+            var date = ParseGameDateTime(dateRaw, statusText);
 
             result.Add(new UpcomingGameDto
             {
@@ -214,5 +215,63 @@ public class GamesController : ControllerBase
             || statusText.Contains("AM", StringComparison.OrdinalIgnoreCase))
             return "Scheduled";
         return "In Progress";
+    }
+    private static readonly Regex GameTimeRegex =
+        new(@"(\d{1,2}:\d{2}\s*[AP]M)\s*ET", RegexOptions.IgnoreCase);
+
+    private static string ParseGameDateTime(string dateRaw, string statusText)
+    {
+        if (!DateTime.TryParse(dateRaw, out var dateOnly))
+        {
+            return DateTime.UtcNow.ToString("O");
+        }
+
+        // Try to extract time like "7:30 PM ET"
+        var match = GameTimeRegex.Match(statusText ?? "");
+
+        DateTime easternDateTime;
+
+        if (match.Success)
+        {
+            // Parse the time portion
+            if (!DateTime.TryParse(
+                    match.Groups[1].Value,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var parsedTime))
+            {
+                parsedTime = DateTime.MinValue;
+            }
+
+            easternDateTime = new DateTime(
+                dateOnly.Year,
+                dateOnly.Month,
+                dateOnly.Day,
+                parsedTime.Hour,
+                parsedTime.Minute,
+                0,
+                DateTimeKind.Unspecified
+            );
+        }
+        else
+        {
+            // Fallback for "Final", "Halftime", etc.
+            easternDateTime = new DateTime(
+                dateOnly.Year,
+                dateOnly.Month,
+                dateOnly.Day,
+                0,
+                0,
+                0,
+                DateTimeKind.Unspecified
+            );
+        }
+
+        var utc = TimeZoneInfo.ConvertTimeToUtc(
+            easternDateTime,
+            Eastern
+        );
+
+        return utc.ToString("O");
     }
 }

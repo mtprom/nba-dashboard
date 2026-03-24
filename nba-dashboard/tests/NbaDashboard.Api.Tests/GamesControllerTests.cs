@@ -45,6 +45,96 @@ public class GamesControllerTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task GetUpcoming_ParsesGameTimeFromStatusText()
+    {
+        _fakeNba.Setup(() => BuildFakeScoreboard());
+
+        var resp = await _client.GetAsync("/api/games/upcoming");
+
+        resp.EnsureSuccessStatusCode();
+        var result = await resp.Content.ReadFromJsonAsync<List<UpcomingGameDto>>();
+
+        Assert.NotNull(result);
+        Assert.Single(result);
+
+        // "7:30 PM ET" on 2026-03-17 (EDT, UTC-4) = 2026-03-17T23:30:00Z
+        var parsed = DateTime.Parse(result[0].Game.Date).ToUniversalTime();
+        Assert.Equal(new DateTime(2026, 3, 17, 23, 30, 0, DateTimeKind.Utc), parsed);
+    }
+
+    [Fact]
+    public async Task GetUpcoming_FinalGame_ReturnsDateWithoutCrashing()
+    {
+        _fakeNba.Setup(() => new ScoreboardV2Response
+        {
+            ResultSets =
+            [
+                new ScoreboardResultSet
+                {
+                    Name = "GameHeader",
+                    Headers = ["GAME_DATE_EST", "GAME_SEQUENCE", "GAME_ID", "GAME_STATUS_ID",
+                        "GAME_STATUS_TEXT", "HOME_TEAM_ID", "VISITOR_TEAM_ID", "ARENA_NAME"],
+                    RowSet =
+                    [
+                        [
+                            JsonElement("2026-03-17T00:00:00"),
+                            JsonElement(1),
+                            JsonElement("0022500998"),
+                            JsonElement(3),
+                            JsonElement("Final"),
+                            JsonElement(TestDataSeeder.CelticsId),
+                            JsonElement(TestDataSeeder.LakersId),
+                            JsonElement("TD Garden"),
+                        ]
+                    ]
+                },
+                new ScoreboardResultSet
+                {
+                    Name = "LineScore",
+                    Headers = ["GAME_DATE_EST", "GAME_SEQUENCE", "GAME_ID", "TEAM_ID",
+                        "TEAM_ABBREVIATION", "TEAM_CITY_NAME", "TEAM_NICKNAME", "PTS"],
+                    RowSet =
+                    [
+                        [
+                            JsonElement("2026-03-17T00:00:00"),
+                            JsonElement(1),
+                            JsonElement("0022500998"),
+                            JsonElement(TestDataSeeder.CelticsId),
+                            JsonElement("BOS"),
+                            JsonElement("Boston"),
+                            JsonElement("Celtics"),
+                            JsonElement(112),
+                        ],
+                        [
+                            JsonElement("2026-03-17T00:00:00"),
+                            JsonElement(1),
+                            JsonElement("0022500998"),
+                            JsonElement(TestDataSeeder.LakersId),
+                            JsonElement("LAL"),
+                            JsonElement("Los Angeles"),
+                            JsonElement("Lakers"),
+                            JsonElement(105),
+                        ]
+                    ]
+                }
+            ]
+        });
+
+        var resp = await _client.GetAsync("/api/games/upcoming");
+
+        resp.EnsureSuccessStatusCode();
+        var result = await resp.Content.ReadFromJsonAsync<List<UpcomingGameDto>>();
+
+        Assert.NotNull(result);
+        Assert.Single(result);
+
+        // "Final" has no time — should use midnight ET = 2026-03-17T04:00:00Z (EDT)
+        var parsed = DateTime.Parse(result[0].Game.Date).ToUniversalTime();
+        Assert.Equal(new DateTime(2026, 3, 17, 4, 0, 0, DateTimeKind.Utc), parsed);
+        Assert.Equal("Final", result[0].Game.Status);
+    }
+
+    [Fact]
     public async Task GetUpcoming_NbaApiFailure_ReturnsEmptyArray()
     {
         _fakeNba.SetupThrow(new HttpRequestException("NBA API down"));
