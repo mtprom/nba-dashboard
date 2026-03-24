@@ -2,7 +2,7 @@ import { useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useTeamColors } from "@/hooks/useTeamColors"
-import { getTeamColors } from "@/data/teams"
+import { getTeamColors, TEAM_INFO } from "@/data/teams"
 import { cn } from "@/lib/utils"
 import type { UpcomingGame } from "@/types"
 
@@ -44,7 +44,7 @@ export default function GameCard({ game, isSelected, onSelect }: GameCardProps) 
               className="flex h-12 w-12 items-center justify-center rounded-full text-sm font-bold"
               style={{ backgroundColor: awayColors.primary, color: awayColors.secondary }}
             >
-              {game.visitorTeam.abbreviation}
+              {game.visitorTeam.abbreviation || TEAM_INFO[game.visitorTeam.id]?.abbreviation || "?"}
             </div>
             <span className="text-xs text-muted-foreground">{game.visitorTeam.city}</span>
             <span className="text-sm font-semibold">{game.visitorTeam.name}</span>
@@ -74,7 +74,7 @@ export default function GameCard({ game, isSelected, onSelect }: GameCardProps) 
               className="flex h-12 w-12 items-center justify-center rounded-full text-sm font-bold"
               style={{ backgroundColor: homeColors.primary, color: homeColors.secondary }}
             >
-              {game.homeTeam.abbreviation}
+              {game.homeTeam.abbreviation || TEAM_INFO[game.homeTeam.id]?.abbreviation || "?"}
             </div>
             <span className="text-xs text-muted-foreground">{game.homeTeam.city}</span>
             <span className="text-sm font-semibold">{game.homeTeam.name}</span>
