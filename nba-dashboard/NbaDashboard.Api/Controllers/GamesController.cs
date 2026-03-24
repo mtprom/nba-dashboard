@@ -82,14 +82,18 @@ public class GamesController : ControllerBase
         int arenaIdx = gh.IndexOf("ARENA_NAME");
         int dateIdx = gh.IndexOf("GAME_DATE_EST");
 
-        // Build a lookup for scores from LineScore: (gameId, teamId) -> pts
+        // Build lookups from LineScore: scores and team info (fallback when team not in DB)
         var scores = new Dictionary<(string gameId, int teamId), int>();
+        var lineScoreTeams = new Dictionary<int, TeamDto>();
         if (lineScore != null)
         {
             var lh = lineScore.Headers;
             int lsGameIdIdx = lh.IndexOf("GAME_ID");
             int lsTeamIdIdx = lh.IndexOf("TEAM_ID");
             int lsPtsIdx = lh.IndexOf("PTS");
+            int lsAbbrIdx = lh.IndexOf("TEAM_ABBREVIATION");
+            int lsCityIdx = lh.IndexOf("TEAM_CITY_NAME");
+            int lsNameIdx = lh.IndexOf("TEAM_NICKNAME");
 
             foreach (var row in lineScore.RowSet)
             {
@@ -98,6 +102,21 @@ public class GamesController : ControllerBase
                 var pts = lsPtsIdx >= 0 && row[lsPtsIdx].ValueKind != JsonValueKind.Null
                     ? row[lsPtsIdx].GetInt32() : 0;
                 scores[(gid, tid)] = pts;
+
+                if (!lineScoreTeams.ContainsKey(tid))
+                {
+                    var abbr = lsAbbrIdx >= 0 ? (row[lsAbbrIdx].GetString() ?? "") : "";
+                    var city = lsCityIdx >= 0 ? (row[lsCityIdx].GetString() ?? "") : "";
+                    var name = lsNameIdx >= 0 ? (row[lsNameIdx].GetString() ?? "") : "";
+                    lineScoreTeams[tid] = new TeamDto
+                    {
+                        Id = tid,
+                        Abbreviation = abbr,
+                        City = city,
+                        Name = name,
+                        FullName = $"{city} {name}".Trim(),
+                    };
+                }
             }
         }
 
@@ -123,9 +142,39 @@ public class GamesController : ControllerBase
             var arena = arenaIdx >= 0 ? (row[arenaIdx].GetString() ?? "") : "";
             var dateRaw = dateIdx >= 0 ? (row[dateIdx].GetString() ?? "") : "";
 
-            if (!teams.TryGetValue(homeTeamId, out var homeTeam) ||
-                !teams.TryGetValue(visitorTeamId, out var visitorTeam))
-                continue;
+            // Use DB team data, falling back to LineScore data when team not in DB
+            TeamDto homeTeamDto;
+            TeamDto visitorTeamDto;
+
+            if (teams.TryGetValue(homeTeamId, out var homeTeam))
+            {
+                homeTeamDto = new TeamDto
+                {
+                    Id = homeTeam.Id, Name = homeTeam.Name, FullName = homeTeam.FullName,
+                    Abbreviation = homeTeam.Abbreviation, City = homeTeam.City,
+                    Conference = homeTeam.Conference, Division = homeTeam.Division,
+                };
+            }
+            else if (lineScoreTeams.TryGetValue(homeTeamId, out var lsHome))
+            {
+                homeTeamDto = lsHome;
+            }
+            else continue;
+
+            if (teams.TryGetValue(visitorTeamId, out var visitorTeam))
+            {
+                visitorTeamDto = new TeamDto
+                {
+                    Id = visitorTeam.Id, Name = visitorTeam.Name, FullName = visitorTeam.FullName,
+                    Abbreviation = visitorTeam.Abbreviation, City = visitorTeam.City,
+                    Conference = visitorTeam.Conference, Division = visitorTeam.Division,
+                };
+            }
+            else if (lineScoreTeams.TryGetValue(visitorTeamId, out var lsVisitor))
+            {
+                visitorTeamDto = lsVisitor;
+            }
+            else continue;
 
             scores.TryGetValue((gameId, homeTeamId), out var homeScore);
             scores.TryGetValue((gameId, visitorTeamId), out var visitorScore);
@@ -148,26 +197,8 @@ public class GamesController : ControllerBase
                     VisitorScore = visitorScore,
                     Arena = arena,
                 },
-                HomeTeam = new TeamDto
-                {
-                    Id = homeTeam.Id,
-                    Name = homeTeam.Name,
-                    FullName = homeTeam.FullName,
-                    Abbreviation = homeTeam.Abbreviation,
-                    City = homeTeam.City,
-                    Conference = homeTeam.Conference,
-                    Division = homeTeam.Division,
-                },
-                VisitorTeam = new TeamDto
-                {
-                    Id = visitorTeam.Id,
-                    Name = visitorTeam.Name,
-                    FullName = visitorTeam.FullName,
-                    Abbreviation = visitorTeam.Abbreviation,
-                    City = visitorTeam.City,
-                    Conference = visitorTeam.Conference,
-                    Division = visitorTeam.Division,
-                },
+                HomeTeam = homeTeamDto,
+                VisitorTeam = visitorTeamDto,
             });
         }
 

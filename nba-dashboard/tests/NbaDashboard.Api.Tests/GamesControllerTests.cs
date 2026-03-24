@@ -1,5 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.DependencyInjection;
 using NbaDashboard.Api.DTOs;
 using NbaDashboard.Api.Tests.Fixtures;
 using NbaDashboard.Api.Tests.Helpers;
@@ -16,6 +18,8 @@ public class GamesControllerTests : IClassFixture<TestWebApplicationFactory>
     {
         _client = factory.CreateClient();
         _fakeNba = factory.FakeNbaClient;
+        // Clear scoreboard cache between tests to prevent cross-test interference
+        factory.Services.GetRequiredService<IMemoryCache>().Remove("scoreboard_today");
     }
 
     [Fact]
@@ -68,6 +72,85 @@ public class GamesControllerTests : IClassFixture<TestWebApplicationFactory>
         Assert.True(callsDelta <= 1, $"Expected at most 1 NBA API call but got {callsDelta}");
     }
 
+    [Fact]
+    public async Task GetUpcoming_TeamsNotInDb_FallsBackToLineScoreData()
+    {
+        // Use team IDs that are NOT seeded in the test database
+        const int hawksId = 1610612737;
+        const int bullsId = 1610612741;
+
+        _fakeNba.Setup(() => new ScoreboardV2Response
+        {
+            ResultSets =
+            [
+                new ScoreboardResultSet
+                {
+                    Name = "GameHeader",
+                    Headers = ["GAME_DATE_EST", "GAME_SEQUENCE", "GAME_ID", "GAME_STATUS_ID",
+                        "GAME_STATUS_TEXT", "HOME_TEAM_ID", "VISITOR_TEAM_ID", "ARENA_NAME"],
+                    RowSet =
+                    [
+                        [
+                            JsonElement("2026-03-17T00:00:00"),
+                            JsonElement(1),
+                            JsonElement("0022500888"),
+                            JsonElement(1),
+                            JsonElement("8:00 PM ET"),
+                            JsonElement(hawksId),
+                            JsonElement(bullsId),
+                            JsonElement("State Farm Arena"),
+                        ]
+                    ]
+                },
+                new ScoreboardResultSet
+                {
+                    Name = "LineScore",
+                    Headers = ["GAME_DATE_EST", "GAME_SEQUENCE", "GAME_ID", "TEAM_ID",
+                        "TEAM_ABBREVIATION", "TEAM_CITY_NAME", "TEAM_NICKNAME", "PTS"],
+                    RowSet =
+                    [
+                        [
+                            JsonElement("2026-03-17T00:00:00"),
+                            JsonElement(1),
+                            JsonElement("0022500888"),
+                            JsonElement(hawksId),
+                            JsonElement("ATL"),
+                            JsonElement("Atlanta"),
+                            JsonElement("Hawks"),
+                            JsonElement(0),
+                        ],
+                        [
+                            JsonElement("2026-03-17T00:00:00"),
+                            JsonElement(1),
+                            JsonElement("0022500888"),
+                            JsonElement(bullsId),
+                            JsonElement("CHI"),
+                            JsonElement("Chicago"),
+                            JsonElement("Bulls"),
+                            JsonElement(0),
+                        ]
+                    ]
+                }
+            ]
+        });
+
+        var resp = await _client.GetAsync("/api/games/upcoming");
+
+        resp.EnsureSuccessStatusCode();
+        var result = await resp.Content.ReadFromJsonAsync<List<UpcomingGameDto>>();
+
+        Assert.NotNull(result);
+        Assert.Single(result);
+
+        var game = result[0];
+        Assert.Equal("ATL", game.HomeTeam.Abbreviation);
+        Assert.Equal("Hawks", game.HomeTeam.Name);
+        Assert.Equal("Atlanta", game.HomeTeam.City);
+        Assert.Equal("CHI", game.VisitorTeam.Abbreviation);
+        Assert.Equal("Bulls", game.VisitorTeam.Name);
+        Assert.Equal("Chicago", game.VisitorTeam.City);
+    }
+
     private static ScoreboardV2Response BuildFakeScoreboard()
     {
         return new ScoreboardV2Response
@@ -96,7 +179,8 @@ public class GamesControllerTests : IClassFixture<TestWebApplicationFactory>
                 new ScoreboardResultSet
                 {
                     Name = "LineScore",
-                    Headers = ["GAME_DATE_EST", "GAME_SEQUENCE", "GAME_ID", "TEAM_ID", "PTS"],
+                    Headers = ["GAME_DATE_EST", "GAME_SEQUENCE", "GAME_ID", "TEAM_ID",
+                        "TEAM_ABBREVIATION", "TEAM_CITY_NAME", "TEAM_NICKNAME", "PTS"],
                     RowSet =
                     [
                         [
@@ -104,6 +188,9 @@ public class GamesControllerTests : IClassFixture<TestWebApplicationFactory>
                             JsonElement(1),
                             JsonElement("0022500999"),
                             JsonElement(TestDataSeeder.CelticsId),
+                            JsonElement("BOS"),
+                            JsonElement("Boston"),
+                            JsonElement("Celtics"),
                             JsonElement(0),
                         ],
                         [
@@ -111,6 +198,9 @@ public class GamesControllerTests : IClassFixture<TestWebApplicationFactory>
                             JsonElement(1),
                             JsonElement("0022500999"),
                             JsonElement(TestDataSeeder.LakersId),
+                            JsonElement("LAL"),
+                            JsonElement("Los Angeles"),
+                            JsonElement("Lakers"),
                             JsonElement(0),
                         ]
                     ]

@@ -98,8 +98,8 @@ public class SyncStandingsJob
             {
                 team.Name = teamName;
                 team.FullName = $"{teamCity} {teamName}".Trim();
-                team.City = teamCity;
-                team.Abbreviation = teamAbbr;
+                if (!string.IsNullOrEmpty(teamCity)) team.City = teamCity;
+                if (!string.IsNullOrEmpty(teamAbbr)) team.Abbreviation = teamAbbr;
             }
             team.UpdatedAt = DateTime.UtcNow;
 
