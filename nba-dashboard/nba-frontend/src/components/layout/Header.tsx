@@ -6,6 +6,7 @@ export default function Header() {
   const navItems = [
     { label: "Games", path: "/" },
     { label: "Standings", path: "/standings" },
+    { label: "Hot", path: "/hot" },
   ]
 
   return (

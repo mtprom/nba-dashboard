@@ -93,6 +93,52 @@ export interface StandingsEntry {
   pace: number
 }
 
+export interface HotPlayer {
+  playerId: number
+  playerName: string
+  position: string
+  jerseyNumber: string
+  team: Team
+  heatScore: number
+  gamesPlayed: number
+  ptsAvg: number
+  rebAvg: number
+  astAvg: number
+  fgPct: number
+  tsPct: number
+  netRating: number
+  baselinePtsAvg: number
+  baselineRebAvg: number
+  baselineAstAvg: number
+  baselineFgPct: number
+  baselineTsPct: number
+  baselineNetRating: number
+  ptsDelta: number
+  rebDelta: number
+  astDelta: number
+  fgPctDelta: number
+  tsPctDelta: number
+  netRatingDelta: number
+}
+
+export interface HotTeam {
+  team: Team
+  heatScore: number
+  windowWins: number
+  windowLosses: number
+  windowWinPct: number
+  windowPtsScored: number
+  windowPtsAllowed: number
+  windowNetRating: number
+  baselineWinPct: number
+  baselineOffRating: number
+  baselineDefRating: number
+  baselineNetRating: number
+  winPctDelta: number
+  scoringDelta: number
+  netRatingDelta: number
+}
+
 export interface OutperformingPlayer {
   playerId: number
   playerName: string
