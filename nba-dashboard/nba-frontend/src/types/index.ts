@@ -75,6 +75,24 @@ export interface MatchupHistory {
   opponentWins: number
 }
 
+export interface StandingsEntry {
+  team: Team
+  conference: string
+  wins: number
+  losses: number
+  winPct: number
+  confRank: number
+  divRank: number
+  homeRecord: string
+  awayRecord: string
+  last10: string
+  streak: string
+  offRating: number
+  defRating: number
+  netRating: number
+  pace: number
+}
+
 export interface OutperformingPlayer {
   playerId: number
   playerName: string

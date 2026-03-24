@@ -8,4 +8,4 @@ using ApiTest.Tests;
 //   CurlResultTest          — unit tests for block detection heuristics (no network)
 //   RotatedHeaderApiTest    — integration test: tries each header profile against NBA API
 
-await CurlResultTest.RunAsync();
+await StandingsApiTest.RunAsync();

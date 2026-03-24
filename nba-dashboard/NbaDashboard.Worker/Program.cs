@@ -28,6 +28,7 @@ builder.ConfigureServices((context, services) =>
     services.AddScoped<SyncBoxScoresJob>();
     services.AddScoped<HistoricalBackfillJob>();
     services.AddScoped<SyncSeasonAveragesJob>();
+    services.AddScoped<SyncStandingsJob>();
 
     services.AddHangfire(config => config
         .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
@@ -42,25 +43,33 @@ var host = builder.Build();
 
 using (var scope = host.Services.CreateScope())
 {
-    // Run historical backfill once on startup (resumes from cursor if interrupted)
-    var backfill = scope.ServiceProvider.GetRequiredService<HistoricalBackfillJob>();
-    await backfill.RunAsync();
+    // Run standings sync first on startup (single API call, fast)
+    var standings = scope.ServiceProvider.GetRequiredService<SyncStandingsJob>();
+    await standings.RunAsync();
 
-    // Run season averages backfill after box scores are populated
+    // Run season averages backfill (2 API calls per season)
     var seasonAvg = scope.ServiceProvider.GetRequiredService<SyncSeasonAveragesJob>();
     await seasonAvg.RunAsync();
 
-    // Schedule nightly box score sync at 3:00 AM going forward
+    // Run historical backfill (resumes from cursor if interrupted, can take hours)
+    var backfill = scope.ServiceProvider.GetRequiredService<HistoricalBackfillJob>();
+    await backfill.RunAsync();
+
+    // Schedule nightly recurring jobs
     RecurringJob.AddOrUpdate<SyncBoxScoresJob>(
         "sync-box-scores",
         job => job.RunAsync(null, CancellationToken.None),
         "0 3 * * *");
 
-    // Schedule nightly season averages sync at 4:00 AM going forward
     RecurringJob.AddOrUpdate<SyncSeasonAveragesJob>(
         "sync-season-averages",
         job => job.SyncCurrentSeasonAsync(CancellationToken.None),
         "0 4 * * *");
+
+    RecurringJob.AddOrUpdate<SyncStandingsJob>(
+        "sync-standings",
+        job => job.RunAsync(CancellationToken.None),
+        "0 5 * * *");
 }
 
 host.Run();
