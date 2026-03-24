@@ -282,9 +282,13 @@ public class SyncBoxScoresJob
         }
         else
         {
-            if (!string.IsNullOrEmpty(tricode)) team.Abbreviation = tricode;
-            if (!string.IsNullOrEmpty(name)) { team.Name = name; team.FullName = $"{city} {name}".Trim(); }
-            if (!string.IsNullOrEmpty(city)) team.City = city;
+            // Only update name/city if standings hasn't set the canonical identity yet
+            if (string.IsNullOrEmpty(team.Conference))
+            {
+                if (!string.IsNullOrEmpty(tricode)) team.Abbreviation = tricode;
+                if (!string.IsNullOrEmpty(name)) { team.Name = name; team.FullName = $"{city} {name}".Trim(); }
+                if (!string.IsNullOrEmpty(city)) team.City = city;
+            }
             team.UpdatedAt    = DateTime.UtcNow;
         }
         await _db.SaveChangesAsync(ct);

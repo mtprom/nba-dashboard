@@ -83,15 +83,25 @@ public class SyncStandingsJob
                 continue;
             }
 
-            // Backfill team conference/division from standings data if missing
+            // Always update team identity from standings (canonical source for current names)
             var conference = Str(row, idx, "Conference");
             var division = idx.ContainsKey("Division") ? Str(row, idx, "Division") : "";
+            var teamCity = Str(row, idx, "TeamCity");
+            var teamName = Str(row, idx, "TeamName");
+            var teamAbbr = Str(row, idx, "TeamAbbreviation");
             if (!string.IsNullOrEmpty(conference))
             {
                 team.Conference = conference;
                 team.Division = division;
-                team.UpdatedAt = DateTime.UtcNow;
             }
+            if (!string.IsNullOrEmpty(teamName))
+            {
+                team.Name = teamName;
+                team.FullName = $"{teamCity} {teamName}".Trim();
+                team.City = teamCity;
+                team.Abbreviation = teamAbbr;
+            }
+            team.UpdatedAt = DateTime.UtcNow;
 
             var snapshot = await _db.StandingsSnapshots
                 .FirstOrDefaultAsync(s =>
