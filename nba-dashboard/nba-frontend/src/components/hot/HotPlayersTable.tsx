@@ -56,7 +56,7 @@ export default function HotPlayersTable({ players }: HotPlayersTableProps) {
                   <div>
                     <div className="font-medium">{player.playerName}</div>
                     <div className="text-xs text-muted-foreground">
-                      {player.position} &middot; {player.team.abbreviation}
+                      {player.position} &middot; {player.team.city} {player.team.name}
                     </div>
                   </div>
                 </div>

@@ -405,10 +405,11 @@ public class HotController : ControllerBase
         }
 
         var ordered = result.OrderByDescending(t => t.HeatScore).ToList();
+        var mid = ordered.Count / 2;
         return new HotTeamsResponseDto
         {
-            Hot = ordered.Where(t => t.HeatScore > 0).Take(15).ToList(),
-            Cold = ordered.Where(t => t.HeatScore < 0).OrderBy(t => t.HeatScore).Take(15).ToList(),
+            Hot = ordered.Take(mid).ToList(),
+            Cold = ordered.Skip(mid).Reverse().ToList(),
         };
     }
 
@@ -483,10 +484,11 @@ public class HotController : ControllerBase
         }
 
         var ordered = result.OrderByDescending(t => t.HeatScore).ToList();
+        var mid = ordered.Count / 2;
         return new HotTeamsResponseDto
         {
-            Hot = ordered.Where(t => t.HeatScore > 0).Take(15).ToList(),
-            Cold = ordered.Where(t => t.HeatScore < 0).OrderBy(t => t.HeatScore).Take(15).ToList(),
+            Hot = ordered.Take(mid).ToList(),
+            Cold = ordered.Skip(mid).Reverse().ToList(),
         };
     }
 }
