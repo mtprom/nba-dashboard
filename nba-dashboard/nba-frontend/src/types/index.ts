@@ -139,6 +139,16 @@ export interface HotTeam {
   netRatingDelta: number
 }
 
+export interface HotPlayersResponse {
+  hot: HotPlayer[]
+  cold: HotPlayer[]
+}
+
+export interface HotTeamsResponse {
+  hot: HotTeam[]
+  cold: HotTeam[]
+}
+
 export interface OutperformingPlayer {
   playerId: number
   playerName: string

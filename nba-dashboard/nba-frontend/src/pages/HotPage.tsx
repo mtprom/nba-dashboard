@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect } from "react"
 import Header from "@/components/layout/Header"
 import PageContainer from "@/components/layout/PageContainer"
 import HotPlayersTable from "@/components/hot/HotPlayersTable"
@@ -6,7 +6,7 @@ import HotTeamsTable from "@/components/hot/HotTeamsTable"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getHotPlayers, getHotTeams } from "@/api/hot"
-import type { HotPlayer, HotTeam } from "@/types"
+import type { HotPlayersResponse, HotTeamsResponse } from "@/types"
 
 type WindowOption = "5" | "10" | "season"
 
@@ -18,8 +18,8 @@ const WINDOW_LABELS: Record<WindowOption, string> = {
 
 export default function HotPage() {
   const [window, setWindow] = useState<WindowOption>("5")
-  const [players, setPlayers] = useState<HotPlayer[]>([])
-  const [teams, setTeams] = useState<HotTeam[]>([])
+  const [players, setPlayers] = useState<HotPlayersResponse>({ hot: [], cold: [] })
+  const [teams, setTeams] = useState<HotTeamsResponse>({ hot: [], cold: [] })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -48,28 +48,6 @@ export default function HotPage() {
       cancelled = true
     }
   }, [window])
-
-  const hottestPlayers = useMemo(
-    () => players.filter((p) => p.heatScore > 0),
-    [players]
-  )
-  const coldestPlayers = useMemo(
-    () => [...players.filter((p) => p.heatScore <= 0)].sort(
-      (a, b) => a.heatScore - b.heatScore
-    ),
-    [players]
-  )
-
-  const hottestTeams = useMemo(
-    () => teams.filter((t) => t.heatScore > 0),
-    [teams]
-  )
-  const coldestTeams = useMemo(
-    () => [...teams.filter((t) => t.heatScore <= 0)].sort(
-      (a, b) => a.heatScore - b.heatScore
-    ),
-    [teams]
-  )
 
   const baselineLabel = window === "season" ? "last season" : "season avg"
 
@@ -117,17 +95,17 @@ export default function HotPage() {
               <Tabs defaultValue="hot">
                 <TabsList className="mb-3">
                   <TabsTrigger value="hot">
-                    Hottest ({hottestPlayers.length})
+                    Hottest ({players.hot.length})
                   </TabsTrigger>
                   <TabsTrigger value="cold">
-                    Coldest ({coldestPlayers.length})
+                    Coldest ({players.cold.length})
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="hot">
-                  <HotPlayersTable players={hottestPlayers} />
+                  <HotPlayersTable players={players.hot} />
                 </TabsContent>
                 <TabsContent value="cold">
-                  <HotPlayersTable players={coldestPlayers} />
+                  <HotPlayersTable players={players.cold} />
                 </TabsContent>
               </Tabs>
             </section>
@@ -138,17 +116,17 @@ export default function HotPage() {
               <Tabs defaultValue="hot">
                 <TabsList className="mb-3">
                   <TabsTrigger value="hot">
-                    Hottest ({hottestTeams.length})
+                    Hottest ({teams.hot.length})
                   </TabsTrigger>
                   <TabsTrigger value="cold">
-                    Coldest ({coldestTeams.length})
+                    Coldest ({teams.cold.length})
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="hot">
-                  <HotTeamsTable teams={hottestTeams} />
+                  <HotTeamsTable teams={teams.hot} />
                 </TabsContent>
                 <TabsContent value="cold">
-                  <HotTeamsTable teams={coldestTeams} />
+                  <HotTeamsTable teams={teams.cold} />
                 </TabsContent>
               </Tabs>
             </section>

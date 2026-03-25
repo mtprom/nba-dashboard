@@ -3,20 +3,19 @@ interface HeatBadgeProps {
 }
 
 export default function HeatBadge({ score }: HeatBadgeProps) {
-  const absScore = Math.abs(score)
   let bg: string
   let text: string
 
-  if (score >= 0.3) {
+  if (score >= 2.0) {
     bg = "bg-red-500/20 text-red-400"
     text = "ON FIRE"
-  } else if (score >= 0.1) {
+  } else if (score >= 0.8) {
     bg = "bg-orange-500/20 text-orange-400"
     text = "Hot"
-  } else if (score > -0.1) {
+  } else if (score > -0.8) {
     bg = "bg-zinc-500/20 text-zinc-400"
     text = "Neutral"
-  } else if (score > -0.3) {
+  } else if (score > -2.0) {
     bg = "bg-blue-400/20 text-blue-400"
     text = "Cold"
   } else {

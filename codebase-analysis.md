@@ -20,6 +20,10 @@
 
 ---
 
+## Deployment
+
+**The project runs Docker-containerized on an SSH server.** The local machine is just used for editing code — preview tools (browser screenshots, etc.) do NOT work. Verification must be done via `curl` against the API or `docker` commands over SSH.
+
 ## Docker Compose
 
 All services defined in `docker-compose.yml`. **Containers run under these names/ports:**

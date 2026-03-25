@@ -25,11 +25,11 @@ public class HotController : ControllerBase
     }
 
     [HttpGet("players")]
-    public async Task<ActionResult<List<HotPlayerDto>>> GetHotPlayers(
+    public async Task<ActionResult<HotPlayersResponseDto>> GetHotPlayers(
         [FromQuery] string window = "5", CancellationToken ct = default)
     {
         var cacheKey = $"hot_players_{window}";
-        if (_cache.TryGetValue(cacheKey, out List<HotPlayerDto>? cached))
+        if (_cache.TryGetValue(cacheKey, out HotPlayersResponseDto? cached))
             return Ok(cached);
 
         try
@@ -38,9 +38,9 @@ public class HotController : ControllerBase
             int currentSeasonYear = now.Month >= 10 ? now.Year : now.Year - 1;
             var currentSeason = await _db.Seasons.FirstOrDefaultAsync(s => s.Year == currentSeasonYear, ct);
             if (currentSeason == null)
-                return Ok(new List<HotPlayerDto>());
+                return Ok(new HotPlayersResponseDto());
 
-            List<HotPlayerDto> result;
+            HotPlayersResponseDto result;
 
             if (window == "season")
             {
@@ -66,11 +66,11 @@ public class HotController : ControllerBase
     }
 
     [HttpGet("teams")]
-    public async Task<ActionResult<List<HotTeamDto>>> GetHotTeams(
+    public async Task<ActionResult<HotTeamsResponseDto>> GetHotTeams(
         [FromQuery] string window = "5", CancellationToken ct = default)
     {
         var cacheKey = $"hot_teams_{window}";
-        if (_cache.TryGetValue(cacheKey, out List<HotTeamDto>? cached))
+        if (_cache.TryGetValue(cacheKey, out HotTeamsResponseDto? cached))
             return Ok(cached);
 
         try
@@ -79,9 +79,9 @@ public class HotController : ControllerBase
             int currentSeasonYear = now.Month >= 10 ? now.Year : now.Year - 1;
             var currentSeason = await _db.Seasons.FirstOrDefaultAsync(s => s.Year == currentSeasonYear, ct);
             if (currentSeason == null)
-                return Ok(new List<HotTeamDto>());
+                return Ok(new HotTeamsResponseDto());
 
-            List<HotTeamDto> result;
+            HotTeamsResponseDto result;
 
             if (window == "season")
             {
@@ -108,7 +108,7 @@ public class HotController : ControllerBase
 
     // ─── Hot Players: Last N Games vs Season Average ───
 
-    private async Task<List<HotPlayerDto>> ComputeLastNGames(int seasonId, int n, CancellationToken ct)
+    private async Task<HotPlayersResponseDto> ComputeLastNGames(int seasonId, int n, CancellationToken ct)
     {
         // Get all season averages for current season (baseline)
         var seasonStats = await _db.PlayerSeasonStats
@@ -117,7 +117,7 @@ public class HotController : ControllerBase
             .ToListAsync(ct);
 
         if (seasonStats.Count == 0)
-            return [];
+            return new HotPlayersResponseDto();
 
         var playerIds = seasonStats.Select(s => s.PlayerId).Distinct().ToList();
 
@@ -186,13 +186,13 @@ public class HotController : ControllerBase
             var tsPctDelta = tsPct - baseline.TsPct;
             var netRatingDelta = netRating - baseline.NetRating;
 
-            // Composite heat score (weighted, normalized by typical ranges)
+            // Raw swing weighted — magnitude matters directly
             var heatScore =
-                (ptsDelta / 5m) * 0.35m +        // ~5 pts swing is significant
-                (tsPctDelta / 0.05m) * 0.25m +   // ~5% TS swing is significant
-                (astDelta / 3m) * 0.15m +         // ~3 ast swing is significant
-                (netRatingDelta / 10m) * 0.15m +  // ~10 NetRtg swing is significant
-                (rebDelta / 3m) * 0.10m;          // ~3 reb swing is significant
+                ptsDelta * 0.30m +                // 1 point delta = 0.30 heat
+                (tsPctDelta * 100m) * 0.05m +     // 1% TS delta = 0.05 heat
+                astDelta * 0.10m +                 // 1 assist delta = 0.10 heat
+                netRatingDelta * 0.03m +           // 1 net rtg delta = 0.03 heat
+                rebDelta * 0.08m;                  // 1 rebound delta = 0.08 heat
 
             result.Add(new HotPlayerDto
             {
@@ -224,17 +224,22 @@ public class HotController : ControllerBase
             });
         }
 
-        return result.OrderByDescending(p => p.HeatScore).Take(50).ToList();
+        var ordered = result.OrderByDescending(p => p.HeatScore).ToList();
+        return new HotPlayersResponseDto
+        {
+            Hot = ordered.Where(p => p.HeatScore > 0).Take(25).ToList(),
+            Cold = ordered.Where(p => p.HeatScore < 0).OrderBy(p => p.HeatScore).Take(25).ToList(),
+        };
     }
 
     // ─── Hot Players: This Season vs Last Season ───
 
-    private async Task<List<HotPlayerDto>> ComputeSeasonVsLastSeason(
+    private async Task<HotPlayersResponseDto> ComputeSeasonVsLastSeason(
         int currentSeasonId, int currentSeasonYear, CancellationToken ct)
     {
         var prevSeason = await _db.Seasons.FirstOrDefaultAsync(s => s.Year == currentSeasonYear - 1, ct);
         if (prevSeason == null)
-            return [];
+            return new HotPlayersResponseDto();
 
         var currentStats = await _db.PlayerSeasonStats
             .Where(s => s.SeasonId == currentSeasonId && s.GamesPlayed >= 10)
@@ -260,11 +265,11 @@ public class HotController : ControllerBase
             var netRatingDelta = current.NetRating - prev.NetRating;
 
             var heatScore =
-                (ptsDelta / 5m) * 0.35m +
-                (tsPctDelta / 0.05m) * 0.25m +
-                (astDelta / 3m) * 0.15m +
-                (netRatingDelta / 10m) * 0.15m +
-                (rebDelta / 3m) * 0.10m;
+                ptsDelta * 0.30m +
+                (tsPctDelta * 100m) * 0.05m +
+                astDelta * 0.10m +
+                netRatingDelta * 0.03m +
+                rebDelta * 0.08m;
 
             result.Add(new HotPlayerDto
             {
@@ -296,16 +301,21 @@ public class HotController : ControllerBase
             });
         }
 
-        return result.OrderByDescending(p => p.HeatScore).Take(50).ToList();
+        var ordered = result.OrderByDescending(p => p.HeatScore).ToList();
+        return new HotPlayersResponseDto
+        {
+            Hot = ordered.Where(p => p.HeatScore > 0).Take(25).ToList(),
+            Cold = ordered.Where(p => p.HeatScore < 0).OrderBy(p => p.HeatScore).Take(25).ToList(),
+        };
     }
 
     // ─── Hot Teams: Last N Games vs Season ───
 
-    private async Task<List<HotTeamDto>> ComputeTeamLastNGames(int seasonId, int n, CancellationToken ct)
+    private async Task<HotTeamsResponseDto> ComputeTeamLastNGames(int seasonId, int n, CancellationToken ct)
     {
         var teams = await _db.Teams.Where(t => !string.IsNullOrEmpty(t.Conference)).ToListAsync(ct);
         if (teams.Count == 0)
-            return [];
+            return new HotTeamsResponseDto();
 
         // Get latest standings for baseline
         var latestDate = await _db.StandingsSnapshots
@@ -367,11 +377,12 @@ public class HotController : ControllerBase
             var scoringDelta = windowPtsScored - baselineOffRating;
             var netRatingDelta = windowNetRating - baselineNetRating;
 
+            var defImprovementDelta = baselineDefRating - windowPtsAllowed;
             var heatScore =
-                (winPctDelta / 0.15m) * 0.35m +      // ~15% win% swing is significant
-                (netRatingDelta / 8m) * 0.30m +       // ~8 pt margin swing
-                (scoringDelta / 8m) * 0.20m +          // ~8 pt scoring swing
-                ((baselineDefRating - windowPtsAllowed) / 8m) * 0.15m;  // defensive improvement
+                (winPctDelta * 100m) * 0.06m +        // 1% win rate delta = 0.06 heat
+                netRatingDelta * 0.15m +               // 1 net rtg delta = 0.15 heat
+                scoringDelta * 0.05m +                 // 1 ppg delta = 0.05 heat
+                defImprovementDelta * 0.05m;           // 1 pt less allowed = 0.05 heat
 
             result.Add(new HotTeamDto
             {
@@ -393,17 +404,22 @@ public class HotController : ControllerBase
             });
         }
 
-        return result.OrderByDescending(t => t.HeatScore).ToList();
+        var ordered = result.OrderByDescending(t => t.HeatScore).ToList();
+        return new HotTeamsResponseDto
+        {
+            Hot = ordered.Where(t => t.HeatScore > 0).Take(15).ToList(),
+            Cold = ordered.Where(t => t.HeatScore < 0).OrderBy(t => t.HeatScore).Take(15).ToList(),
+        };
     }
 
     // ─── Hot Teams: This Season vs Last Season ───
 
-    private async Task<List<HotTeamDto>> ComputeTeamSeasonVsLast(
+    private async Task<HotTeamsResponseDto> ComputeTeamSeasonVsLast(
         int currentSeasonId, int currentSeasonYear, CancellationToken ct)
     {
         var prevSeason = await _db.Seasons.FirstOrDefaultAsync(s => s.Year == currentSeasonYear - 1, ct);
         if (prevSeason == null)
-            return [];
+            return new HotTeamsResponseDto();
 
         // Current standings
         var currentDate = await _db.StandingsSnapshots
@@ -441,10 +457,10 @@ public class HotController : ControllerBase
             var netRatingDelta = current.NetRating - prev.NetRating;
 
             var heatScore =
-                (winPctDelta / 0.15m) * 0.35m +
-                (netRatingDelta / 8m) * 0.30m +
-                (offDelta / 8m) * 0.20m +
-                (defDelta / 8m) * 0.15m;
+                (winPctDelta * 100m) * 0.06m +
+                netRatingDelta * 0.15m +
+                offDelta * 0.05m +
+                defDelta * 0.05m;
 
             result.Add(new HotTeamDto
             {
@@ -466,6 +482,11 @@ public class HotController : ControllerBase
             });
         }
 
-        return result.OrderByDescending(t => t.HeatScore).ToList();
+        var ordered = result.OrderByDescending(t => t.HeatScore).ToList();
+        return new HotTeamsResponseDto
+        {
+            Hot = ordered.Where(t => t.HeatScore > 0).Take(15).ToList(),
+            Cold = ordered.Where(t => t.HeatScore < 0).OrderBy(t => t.HeatScore).Take(15).ToList(),
+        };
     }
 }
