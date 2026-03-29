@@ -23,7 +23,6 @@ export default function GameCard({ game, isSelected, onSelect }: GameCardProps) 
     hour: "numeric",
     minute: "2-digit",
     timeZoneName: "short",
-    timeZone: "UTC",
   })
 
   return (
