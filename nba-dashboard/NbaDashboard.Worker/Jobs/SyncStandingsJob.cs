@@ -137,10 +137,10 @@ public class SyncStandingsJob
             var awayRecord = Str(row, idx, "ROAD");
             var last10 = Str(row, idx, "L10");
             var streak = Str(row, idx, "strCurrentStreak");
-            var offRating = Dec(row, idx, "OffRating");
-            var defRating = Dec(row, idx, "DefRating");
-            var netRating = Dec(row, idx, "NetRating");
-            var pace = Dec(row, idx, "Pace");
+            var offRating = DecAny(row, idx, "E_OFF_RATING", "OffRating");
+            var defRating = DecAny(row, idx, "E_DEF_RATING", "DefRating");
+            var netRating = DecAny(row, idx, "E_NET_RATING", "NetRating");
+            var pace = DecAny(row, idx, "E_PACE", "Pace");
 
             if (snapshot == null)
             {
@@ -231,6 +231,17 @@ public class SyncStandingsJob
         return el.ValueKind == System.Text.Json.JsonValueKind.Null
             ? string.Empty
             : el.GetString() ?? string.Empty;
+    }
+
+    private static decimal DecAny(List<System.Text.Json.JsonElement> row,
+        Dictionary<string, int> idx, params string[] cols)
+    {
+        foreach (var col in cols)
+        {
+            if (idx.ContainsKey(col))
+                return Dec(row, idx, col);
+        }
+        return 0m;
     }
 
     private static Dictionary<string, int> HeaderIndex(List<string> headers)

@@ -4,7 +4,7 @@ namespace NbaDashboard.Infrastructure.NbaStats.Models;
 // { "resultSets": [{ "name": "Standings", "headers": [...], "rowSet": [[...], ...] }] }
 // Key headers: TeamID, TeamCity, TeamName, TeamAbbreviation, Conference, Division,
 // WINS, LOSSES, WinPCT, PlayoffRank, HOME, ROAD, L10, strCurrentStreak,
-// OffRating, DefRating, NetRating, Pace
+// E_OFF_RATING, E_DEF_RATING, E_NET_RATING, E_PACE (or OffRating, DefRating, NetRating, Pace)
 
 public class LeagueStandingsV3Response
 {
