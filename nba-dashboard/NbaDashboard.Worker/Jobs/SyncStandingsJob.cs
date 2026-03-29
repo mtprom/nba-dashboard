@@ -22,14 +22,34 @@ public class SyncStandingsJob
     }
 
     /// <summary>
-    /// Sync current season standings. Used by both startup and nightly cron.
+    /// Sync current season standings. Used by nightly cron.
     /// </summary>
     public async Task RunAsync(CancellationToken ct = default)
     {
         var now = DateTime.UtcNow;
         int seasonYear = now.Month >= 10 ? now.Year : now.Year - 1;
+        await SyncSeasonAsync(seasonYear, ct);
+    }
+
+    /// <summary>
+    /// Sync current + previous season standings. Used on startup to ensure
+    /// season-vs-season comparisons have real NBA data for both seasons.
+    /// </summary>
+    public async Task RunWithPreviousAsync(CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        int seasonYear = now.Month >= 10 ? now.Year : now.Year - 1;
+
+        // Sync previous season first (only needs one snapshot — final standings)
+        await SyncSeasonAsync(seasonYear - 1, ct);
+        // Then current season
+        await SyncSeasonAsync(seasonYear, ct);
+    }
+
+    private async Task SyncSeasonAsync(int seasonYear, CancellationToken ct)
+    {
         var seasonStr = $"{seasonYear}-{(seasonYear + 1) % 100:D2}";
-        var today = DateOnly.FromDateTime(now);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         // Idempotency: skip if already synced today
         var cursorKey = $"standings_{seasonStr}_{today:yyyy-MM-dd}";

@@ -43,9 +43,9 @@ var host = builder.Build();
 
 using (var scope = host.Services.CreateScope())
 {
-    // Run standings sync first on startup (single API call, fast)
+    // Run standings sync first on startup (current + previous season for comparisons)
     var standings = scope.ServiceProvider.GetRequiredService<SyncStandingsJob>();
-    await standings.RunAsync();
+    await standings.RunWithPreviousAsync();
 
     // Run season averages backfill (2 API calls per season)
     var seasonAvg = scope.ServiceProvider.GetRequiredService<SyncSeasonAveragesJob>();

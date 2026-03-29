@@ -131,7 +131,8 @@ public class HotController : ControllerBase
 
         // Get traditional stats for these players in season games
         var allTradStats = await _db.PlayerGameStats
-            .Where(s => playerIds.Contains(s.PlayerId) && seasonGameIds.Contains(s.GameId))
+            .Where(s => playerIds.Contains(s.PlayerId) && seasonGameIds.Contains(s.GameId)
+                        && s.Minutes >= 2m)
             .Include(s => s.Game)
             .OrderByDescending(s => s.Game.Date)
             .ToListAsync(ct);
