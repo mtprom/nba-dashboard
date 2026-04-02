@@ -36,12 +36,38 @@ public class GamesController : ControllerBase
         if (_cache.TryGetValue(CacheKey, out List<UpcomingGameDto>? cached))
             return Ok(cached);
 
+        var todayEt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Eastern);
+        var today = DateOnly.FromDateTime(todayEt);
+        var dateStr = todayEt.ToString("MM/dd/yyyy");
+
+        // Try DB pre-warm cache before hitting the external API
+        var dbCached = await _db.CachedScoreboards
+            .FirstOrDefaultAsync(c => c.Date == today
+                && c.FetchedAt >= DateTime.UtcNow.AddMinutes(-20), ct);
+
+        if (dbCached != null)
+        {
+            try
+            {
+                var dbResp = System.Text.Json.JsonSerializer.Deserialize<ScoreboardV2Response>(dbCached.PayloadJson);
+                if (dbResp != null)
+                {
+                    var dbResult = await ParseScoreboard(dbResp, ct);
+                    _cache.Set(CacheKey, dbResult, new MemoryCacheEntryOptions
+                    {
+                        SlidingExpiration = TimeSpan.FromMinutes(30),
+                    });
+                    return Ok(dbResult);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to deserialize cached scoreboard, falling back to NBA API");
+            }
+        }
+
         try
         {
-            var eastern = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
-            var todayEt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, eastern);
-            var dateStr = todayEt.ToString("MM/dd/yyyy");
-
             var resp = await _nba.GetAsync<ScoreboardV2Response>("scoreboardv2",
                 new Dictionary<string, string>
                 {

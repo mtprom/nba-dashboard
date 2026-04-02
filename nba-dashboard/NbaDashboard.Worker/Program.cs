@@ -29,6 +29,7 @@ builder.ConfigureServices((context, services) =>
     services.AddScoped<HistoricalBackfillJob>();
     services.AddScoped<SyncSeasonAveragesJob>();
     services.AddScoped<SyncStandingsJob>();
+    services.AddScoped<PreWarmScoreboardJob>();
 
     services.AddHangfire(config => config
         .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
@@ -70,6 +71,11 @@ using (var scope = host.Services.CreateScope())
         "sync-standings",
         job => job.RunAsync(CancellationToken.None),
         "0 5 * * *");
+
+    RecurringJob.AddOrUpdate<PreWarmScoreboardJob>(
+        "prewarm-scoreboard",
+        job => job.RunAsync(CancellationToken.None),
+        "*/15 * * * *");
 }
 
 host.Run();

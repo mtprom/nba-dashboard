@@ -1,6 +1,7 @@
 using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using NbaDashboard.Api.DTOs;
 using NbaDashboard.Infrastructure.Data;
 
@@ -12,12 +13,14 @@ public class PlayersController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IMapper _mapper;
+    private readonly IMemoryCache _cache;
     private readonly ILogger<PlayersController> _logger;
 
-    public PlayersController(AppDbContext db, IMapper mapper, ILogger<PlayersController> logger)
+    public PlayersController(AppDbContext db, IMapper mapper, IMemoryCache cache, ILogger<PlayersController> logger)
     {
         _db = db;
         _mapper = mapper;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -32,15 +35,21 @@ public class PlayersController : ControllerBase
             .Select(s => int.TryParse(s.Trim(), out var id) ? id : (int?)null)
             .Where(id => id.HasValue)
             .Select(id => id!.Value)
+            .OrderBy(id => id)
             .ToList();
 
         if (ids.Count == 0)
             return BadRequest("No valid team IDs provided");
 
+        var now = DateTime.UtcNow;
+        int seasonYear = now.Month >= 10 ? now.Year : now.Year - 1;
+        var cacheKey = $"season_avg_{seasonYear}_{string.Join("_", ids)}";
+
+        if (_cache.TryGetValue(cacheKey, out Dictionary<int, PlayerSeasonAvgDto>? cached))
+            return Ok(cached);
+
         try
         {
-            var now = DateTime.UtcNow;
-            int seasonYear = now.Month >= 10 ? now.Year : now.Year - 1;
             var season = await _db.Seasons.FirstOrDefaultAsync(s => s.Year == seasonYear, ct);
             if (season == null)
                 return Ok(new Dictionary<int, PlayerSeasonAvgDto>());
@@ -53,6 +62,11 @@ public class PlayersController : ControllerBase
             var result = stats.ToDictionary(
                 s => s.PlayerId,
                 s => _mapper.Map<PlayerSeasonAvgDto>(s));
+
+            _cache.Set(cacheKey, result, new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1),
+            });
 
             return Ok(result);
         }

@@ -17,6 +17,7 @@ public class AppDbContext : DbContext
     public DbSet<PlayerHeat> PlayerHeat => Set<PlayerHeat>();
     public DbSet<StandingsSnapshot> StandingsSnapshots => Set<StandingsSnapshot>();
     public DbSet<SyncState> SyncStates => Set<SyncState>();
+    public DbSet<CachedScoreboard> CachedScoreboards => Set<CachedScoreboard>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -156,6 +157,13 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<SyncState>(entity =>
         {
             entity.HasKey(s => s.Key);
+        });
+
+        // CachedScoreboard
+        modelBuilder.Entity<CachedScoreboard>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+            entity.HasIndex(c => c.Date).IsUnique();
         });
     }
 }
