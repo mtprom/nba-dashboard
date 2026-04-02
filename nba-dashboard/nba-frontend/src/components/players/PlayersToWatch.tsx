@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import PlayerOutperformCard from "./PlayerOutperformCard"
-import { getTeamColorsDark } from "@/data/teams"
+import { getTeamColors } from "@/data/teams"
 import type { MatchupHistory, MatchupGame, PlayerSeasonAvg, OutperformingPlayer } from "@/types"
 
 interface PlayersToWatchProps {
@@ -110,7 +110,7 @@ export default function PlayersToWatch({ matchup, seasonAverages }: PlayersToWat
           <PlayerOutperformCard
             key={player.playerId}
             player={player}
-            teamColor={getTeamColorsDark(player.teamId).primary}
+            teamColor={getTeamColors(player.teamId).primary}
           />
         ))}
       </div>

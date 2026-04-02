@@ -1,4 +1,4 @@
-import { getTeamColorsDark, TEAM_INFO } from "@/data/teams"
+import { getTeamColors, TEAM_INFO } from "@/data/teams"
 import type { MatchupHistory } from "@/types"
 
 interface MatchupScoreSummaryProps {
@@ -6,8 +6,8 @@ interface MatchupScoreSummaryProps {
 }
 
 export default function MatchupScoreSummary({ matchup }: MatchupScoreSummaryProps) {
-  const teamColors = getTeamColorsDark(matchup.team.id)
-  const oppColors = getTeamColorsDark(matchup.opponent.id)
+  const teamColors = getTeamColors(matchup.team.id)
+  const oppColors = getTeamColors(matchup.opponent.id)
   const total = matchup.teamWins + matchup.opponentWins
 
   return (
