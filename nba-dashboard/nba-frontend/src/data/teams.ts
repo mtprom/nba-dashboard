@@ -1,5 +1,8 @@
 export interface TeamColorDef {
   primary: string
+  /** Explicit override for dark backgrounds. When omitted, getTeamColors falls back
+   *  to the luminance check before using primary. */
+  primaryDark?: string
   secondary: string
 }
 
@@ -7,12 +10,15 @@ export const TEAM_COLORS: Record<number, TeamColorDef> = {
   // Eastern Conference
   1610612737: { primary: "#E03A3E", secondary: "#C1D32F" },  // Atlanta Hawks
   1610612738: { primary: "#007A33", secondary: "#BA9653" },  // Boston Celtics
-  1610612751: { primary: "#000000", secondary: "#FFFFFF" },  // Brooklyn Nets
-  1610612766: { primary: "#1D1160", secondary: "#00788C" },  // Charlotte Hornets
+  // Nets: pure black primary is invisible on dark bg — use silver instead of stark white
+  1610612751: { primary: "#000000", primaryDark: "#C6CDD3", secondary: "#FFFFFF" },  // Brooklyn Nets
+  // Hornets: near-black navy primary — teal reads much better
+  1610612766: { primary: "#1D1160", primaryDark: "#00788C", secondary: "#00788C" },  // Charlotte Hornets
   1610612741: { primary: "#CE1141", secondary: "#000000" },  // Chicago Bulls
   1610612739: { primary: "#860038", secondary: "#FDBB30" },  // Cleveland Cavaliers
   1610612765: { primary: "#C8102E", secondary: "#1D42BA" },  // Detroit Pistons
-  1610612754: { primary: "#002D62", secondary: "#FDBB30" },  // Indiana Pacers
+  // Pacers: dark navy primary — gold is the right brand color for dark bg
+  1610612754: { primary: "#002D62", primaryDark: "#FDBB30", secondary: "#FDBB30" },  // Indiana Pacers
   1610612748: { primary: "#98002E", secondary: "#F9A01B" },  // Miami Heat
   1610612749: { primary: "#00471B", secondary: "#EEE1C6" },  // Milwaukee Bucks
   1610612752: { primary: "#006BB6", secondary: "#F58426" },  // New York Knicks
@@ -32,11 +38,37 @@ export const TEAM_COLORS: Record<number, TeamColorDef> = {
   1610612750: { primary: "#0C2340", secondary: "#236192" },  // Minnesota Timberwolves
   1610612740: { primary: "#0C2340", secondary: "#C8102E" },  // New Orleans Pelicans
   1610612760: { primary: "#007AC1", secondary: "#EF3B24" },  // Oklahoma City Thunder
-  1610612756: { primary: "#1D1160", secondary: "#E56020" },  // Phoenix Suns
+  // Suns: near-black navy primary — orange is their signature dark-bg color
+  1610612756: { primary: "#1D1160", primaryDark: "#E56020", secondary: "#E56020" },  // Phoenix Suns
   1610612757: { primary: "#E03A3E", secondary: "#000000" },  // Portland Trail Blazers
   1610612758: { primary: "#5A2D81", secondary: "#63727A" },  // Sacramento Kings
   1610612759: { primary: "#C4CED4", secondary: "#000000" },  // San Antonio Spurs
   1610612762: { primary: "#002B5C", secondary: "#F9A01B" },  // Utah Jazz
+}
+
+function relativeLuminance(hex: string): number {
+  const r = parseInt(hex.slice(1, 3), 16) / 255
+  const g = parseInt(hex.slice(3, 5), 16) / 255
+  const b = parseInt(hex.slice(5, 7), 16) / 255
+  const toLinear = (c: number) =>
+    c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b)
+}
+
+export function getTeamColors(teamId: number): { primary: string; secondary: string } {
+  const colors = TEAM_COLORS[teamId] ?? { primary: "#6b7280", secondary: "#9ca3af" }
+
+  // Strategy 1: use explicit dark-bg override if one is defined
+  if (colors.primaryDark) {
+    return { primary: colors.primaryDark, secondary: colors.secondary }
+  }
+
+  // Strategy 2: if primary is too dark to read on a dark background, fall back to secondary
+  if (relativeLuminance(colors.primary) < 0.05) {
+    return { primary: colors.secondary, secondary: colors.primary }
+  }
+
+  return { primary: colors.primary, secondary: colors.secondary }
 }
 
 export const TEAM_INFO: Record<number, { name: string; fullName: string; abbreviation: string; city: string; conference: string; division: string }> = {
@@ -61,7 +93,7 @@ export const TEAM_INFO: Record<number, { name: string; fullName: string; abbrevi
   1610612745: { name: "Rockets", fullName: "Houston Rockets", abbreviation: "HOU", city: "Houston", conference: "West", division: "Southwest" },
   1610612746: { name: "Clippers", fullName: "LA Clippers", abbreviation: "LAC", city: "Los Angeles", conference: "West", division: "Pacific" },
   1610612747: { name: "Lakers", fullName: "Los Angeles Lakers", abbreviation: "LAL", city: "Los Angeles", conference: "West", division: "Pacific" },
-  1610612763: { name: "Grizzlies", fullName: "Memphis Grizzlies", abbreviation: "MEM", city: "Memphis", conference: "West", division: "Southwest" },
+  1610612763: { name: "Grizzlies", fullName: "Memphis Grizzlies", abbreviation: "MEM", city: "Memphis", conference: "West", division: "Northwest" },
   1610612750: { name: "Timberwolves", fullName: "Minnesota Timberwolves", abbreviation: "MIN", city: "Minneapolis", conference: "West", division: "Northwest" },
   1610612740: { name: "Pelicans", fullName: "New Orleans Pelicans", abbreviation: "NOP", city: "New Orleans", conference: "West", division: "Southwest" },
   1610612760: { name: "Thunder", fullName: "Oklahoma City Thunder", abbreviation: "OKC", city: "Oklahoma City", conference: "West", division: "Northwest" },
@@ -70,8 +102,4 @@ export const TEAM_INFO: Record<number, { name: string; fullName: string; abbrevi
   1610612758: { name: "Kings", fullName: "Sacramento Kings", abbreviation: "SAC", city: "Sacramento", conference: "West", division: "Pacific" },
   1610612759: { name: "Spurs", fullName: "San Antonio Spurs", abbreviation: "SAS", city: "San Antonio", conference: "West", division: "Southwest" },
   1610612762: { name: "Jazz", fullName: "Utah Jazz", abbreviation: "UTA", city: "Salt Lake City", conference: "West", division: "Northwest" },
-}
-
-export function getTeamColors(teamId: number): TeamColorDef {
-  return TEAM_COLORS[teamId] ?? { primary: "#6b7280", secondary: "#9ca3af" }
 }
