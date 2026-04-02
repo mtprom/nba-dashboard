@@ -1,4 +1,4 @@
-import { getTeamColors } from "@/data/teams"
+import { getTeamColors, TEAM_INFO } from "@/data/teams"
 import type { MatchupHistory } from "@/types"
 
 interface MatchupScoreSummaryProps {
@@ -17,7 +17,7 @@ export default function MatchupScoreSummary({ matchup }: MatchupScoreSummaryProp
           className="flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold"
           style={{ backgroundColor: teamColors.primary, color: teamColors.secondary }}
         >
-          {matchup.team.abbreviation}
+          {matchup.team.abbreviation || TEAM_INFO[matchup.team.id]?.abbreviation || "?"}
         </div>
         <div>
           <div className="text-sm font-semibold">{matchup.team.fullName}</div>
@@ -53,7 +53,7 @@ export default function MatchupScoreSummary({ matchup }: MatchupScoreSummaryProp
           className="flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold"
           style={{ backgroundColor: oppColors.primary, color: oppColors.secondary }}
         >
-          {matchup.opponent.abbreviation}
+          {matchup.opponent.abbreviation || TEAM_INFO[matchup.opponent.id]?.abbreviation || "?"}
         </div>
       </div>
     </div>

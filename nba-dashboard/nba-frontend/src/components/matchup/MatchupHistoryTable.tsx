@@ -6,7 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { getTeamColors } from "@/data/teams"
+import { getTeamColors, TEAM_INFO } from "@/data/teams"
 import type { MatchupGame } from "@/types"
 
 interface MatchupHistoryTableProps {
@@ -42,9 +42,9 @@ export default function MatchupHistoryTable({ games }: MatchupHistoryTableProps)
             <TableRow key={mg.game.id}>
               <TableCell className="text-muted-foreground">{dateStr}</TableCell>
               <TableCell>
-                <span className="font-medium">{mg.visitorTeam.abbreviation}</span>
+                <span className="font-medium">{mg.visitorTeam.abbreviation || TEAM_INFO[mg.visitorTeam.id]?.abbreviation || "?"}</span>
                 <span className="mx-1 text-muted-foreground">@</span>
-                <span className="font-medium">{mg.homeTeam.abbreviation}</span>
+                <span className="font-medium">{mg.homeTeam.abbreviation || TEAM_INFO[mg.homeTeam.id]?.abbreviation || "?"}</span>
               </TableCell>
               <TableCell className="text-right font-mono">
                 {mg.game.visitorScore} - {mg.game.homeScore}
@@ -54,7 +54,7 @@ export default function MatchupHistoryTable({ games }: MatchupHistoryTableProps)
                   className="font-semibold"
                   style={{ color: winnerColors.primary }}
                 >
-                  {winner.abbreviation}
+                  {winner.abbreviation || TEAM_INFO[winner.id]?.abbreviation || "?"}
                 </span>
               </TableCell>
             </TableRow>
