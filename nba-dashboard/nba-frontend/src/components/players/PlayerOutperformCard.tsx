@@ -22,7 +22,7 @@ export default function PlayerOutperformCard({ player, teamColor }: PlayerOutper
           <div>
             <div className="text-sm font-semibold">{player.playerName}</div>
             <div className="text-xs text-muted-foreground">
-              {player.position} &middot; {player.vsOpponent.gamesPlayed} games vs opponent
+              {player.position} &middot; Last matchup
             </div>
           </div>
         </div>

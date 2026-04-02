@@ -1,44 +1,46 @@
 import { useMemo } from "react"
 import PlayerOutperformCard from "./PlayerOutperformCard"
 import { getTeamColors } from "@/data/teams"
-import type { MatchupHistory, PlayerSeasonAvg, OutperformingPlayer, PlayerGameStats } from "@/types"
+import type { MatchupHistory, MatchupGame, PlayerSeasonAvg, OutperformingPlayer } from "@/types"
 
 interface PlayersToWatchProps {
   matchup: MatchupHistory
   seasonAverages: Record<number, PlayerSeasonAvg>
 }
 
+function getCurrentSeasonYear(): number {
+  const now = new Date()
+  return now.getMonth() >= 9 ? now.getFullYear() : now.getFullYear() - 1
+}
+
+function getLastSeasonGame(matchup: MatchupHistory): MatchupGame | null {
+  const seasonYear = getCurrentSeasonYear()
+  const seasonStart = `${seasonYear}-10-01`
+  // games are ordered newest-first from the API
+  return matchup.games.find((mg) => mg.game.date >= seasonStart) ?? null
+}
+
 function computeOutperformers(
-  matchup: MatchupHistory,
+  game: MatchupGame,
   seasonAverages: Record<number, PlayerSeasonAvg>
 ): OutperformingPlayer[] {
-  const playerGames: Record<number, { stats: PlayerGameStats[]; teamId: number }> = {}
-
-  for (const game of matchup.games) {
-    for (const ps of [...game.homePlayerStats, ...game.visitorPlayerStats]) {
-      if (!playerGames[ps.playerId]) {
-        const teamId =
-          game.homePlayerStats.includes(ps) ? game.homeTeam.id : game.visitorTeam.id
-        playerGames[ps.playerId] = { stats: [], teamId }
-      }
-      playerGames[ps.playerId].stats.push(ps)
-    }
-  }
+  const allStats = [
+    ...game.homePlayerStats.map((ps) => ({ ps, teamId: game.homeTeam.id })),
+    ...game.visitorPlayerStats.map((ps) => ({ ps, teamId: game.visitorTeam.id })),
+  ]
 
   const outperformers: OutperformingPlayer[] = []
 
-  for (const [playerIdStr, { stats, teamId }] of Object.entries(playerGames)) {
-    const playerId = Number(playerIdStr)
-    const sa = seasonAverages[playerId]
-    if (!sa || stats.length < 2) continue
+  for (const { ps, teamId } of allStats) {
+    const sa = seasonAverages[ps.playerId]
+    if (!sa) continue
 
-    const count = stats.length
     const vsAvg = {
-      ptsAvg: stats.reduce((s, g) => s + g.points, 0) / count,
-      rebAvg: stats.reduce((s, g) => s + g.rebounds, 0) / count,
-      astAvg: stats.reduce((s, g) => s + g.assists, 0) / count,
-      fgPct: stats.reduce((s, g) => s + g.fieldGoalPct, 0) / count,
-      gamesPlayed: count,
+      ptsAvg: ps.points,
+      rebAvg: ps.rebounds,
+      astAvg: ps.assists,
+      fgPct: ps.fieldGoalPct,
+      gamesPlayed: 1,
     }
 
     const delta = {
@@ -48,13 +50,12 @@ function computeOutperformers(
       fgPct: vsAvg.fgPct - sa.fgPct,
     }
 
-    // Include if points are +3 higher or any counting stat is +2 higher
     const significant =
       delta.pts >= 3 || delta.reb >= 2 || delta.ast >= 2 || delta.fgPct >= 0.03
 
     if (significant) {
       outperformers.push({
-        playerId,
+        playerId: ps.playerId,
         playerName: sa.playerName,
         position: sa.position,
         jerseyNumber: sa.jerseyNumber,
@@ -76,15 +77,25 @@ function computeOutperformers(
 }
 
 export default function PlayersToWatch({ matchup, seasonAverages }: PlayersToWatchProps) {
+  const lastSeasonGame = useMemo(() => getLastSeasonGame(matchup), [matchup])
+
   const outperformers = useMemo(
-    () => computeOutperformers(matchup, seasonAverages),
-    [matchup, seasonAverages]
+    () => (lastSeasonGame ? computeOutperformers(lastSeasonGame, seasonAverages) : []),
+    [lastSeasonGame, seasonAverages]
   )
+
+  if (!lastSeasonGame) {
+    return (
+      <div className="py-8 text-center text-sm text-muted-foreground">
+        No matchup this season.
+      </div>
+    )
+  }
 
   if (outperformers.length === 0) {
     return (
       <div className="py-8 text-center text-sm text-muted-foreground">
-        No significant outperformers found in the last {matchup.games.length} matchups.
+        No standouts last matchup.
       </div>
     )
   }
@@ -92,7 +103,7 @@ export default function PlayersToWatch({ matchup, seasonAverages }: PlayersToWat
   return (
     <div>
       <p className="mb-4 text-sm text-muted-foreground">
-        Players who significantly outperform their season averages against this opponent.
+        Players who significantly outperformed their season averages in the last matchup.
       </p>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {outperformers.map((player) => (
