@@ -58,7 +58,7 @@ function computeOutperformers(
         playerId: ps.playerId,
         playerName: sa.playerName,
         position: sa.position,
-        jerseyNumber: sa.jerseyNumber,
+        jerseyNumber: ps.jerseyNumber || sa.jerseyNumber,
         teamId,
         vsOpponent: vsAvg,
         seasonAvg: {
