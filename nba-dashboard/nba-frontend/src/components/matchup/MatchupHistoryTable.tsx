@@ -6,7 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { getTeamColors, TEAM_INFO } from "@/data/teams"
+import { getTeamColorsDark, TEAM_INFO } from "@/data/teams"
 import type { MatchupGame } from "@/types"
 
 interface MatchupHistoryTableProps {
@@ -28,7 +28,7 @@ export default function MatchupHistoryTable({ games }: MatchupHistoryTableProps)
         {games.map((mg) => {
           const homeWon = mg.game.homeScore > mg.game.visitorScore
           const winner = homeWon ? mg.homeTeam : mg.visitorTeam
-          const winnerColors = getTeamColors(winner.id)
+          const winnerColors = getTeamColorsDark(winner.id)
 
           const d = new Date(mg.game.date)
           const dateStr = d.toLocaleDateString("en-US", {

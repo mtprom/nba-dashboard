@@ -46,6 +46,11 @@ export const TEAM_COLORS: Record<number, TeamColorDef> = {
   1610612762: { primary: "#002B5C", secondary: "#F9A01B" },  // Utah Jazz
 }
 
+export function getTeamColors(teamId: number): { primary: string; secondary: string } {
+  const colors = TEAM_COLORS[teamId] ?? { primary: "#6b7280", secondary: "#9ca3af" }
+  return { primary: colors.primary, secondary: colors.secondary }
+}
+
 function relativeLuminance(hex: string): number {
   const r = parseInt(hex.slice(1, 3), 16) / 255
   const g = parseInt(hex.slice(3, 5), 16) / 255
@@ -55,15 +60,16 @@ function relativeLuminance(hex: string): number {
   return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b)
 }
 
-export function getTeamColors(teamId: number): { primary: string; secondary: string } {
+/** Like getTeamColors but adjusted for dark backgrounds.
+ *  Uses primaryDark override if defined, then falls back to secondary
+ *  if the primary color is too dark to read. */
+export function getTeamColorsDark(teamId: number): { primary: string; secondary: string } {
   const colors = TEAM_COLORS[teamId] ?? { primary: "#6b7280", secondary: "#9ca3af" }
 
-  // Strategy 1: use explicit dark-bg override if one is defined
   if (colors.primaryDark) {
     return { primary: colors.primaryDark, secondary: colors.secondary }
   }
 
-  // Strategy 2: if primary is too dark to read on a dark background, fall back to secondary
   if (relativeLuminance(colors.primary) < 0.05) {
     return { primary: colors.secondary, secondary: colors.primary }
   }
