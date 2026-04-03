@@ -320,8 +320,8 @@ public class SyncBoxScoresJob
         else
         {
             player.TeamId       = teamId;
-            player.Position     = position;
-            player.JerseyNumber = jerseyNum;
+            if (!string.IsNullOrEmpty(position)) player.Position = position;
+            if (!string.IsNullOrEmpty(jerseyNum)) player.JerseyNumber = jerseyNum;
             player.UpdatedAt    = DateTime.UtcNow;
         }
         await _db.SaveChangesAsync(ct);

@@ -17,7 +17,9 @@ export default function PlayerOutperformCard({ player, teamColor }: PlayerOutper
             className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold"
             style={{ backgroundColor: teamColor, color: "#fff" }}
           >
-            #{player.jerseyNumber}
+            {player.jerseyNumber
+              ? `#${player.jerseyNumber}`
+              : player.playerName.split(" ").map(n => n[0]).join("")}
           </div>
           <div>
             <div className="text-sm font-semibold">{player.playerName}</div>
