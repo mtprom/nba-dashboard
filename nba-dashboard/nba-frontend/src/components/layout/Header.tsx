@@ -7,6 +7,7 @@ export default function Header() {
     { label: "Games", path: "/" },
     { label: "Standings", path: "/standings" },
     { label: "Hot", path: "/hot" },
+    { label: "History", path: "/history" },
   ]
 
   return (
