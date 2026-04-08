@@ -299,7 +299,7 @@ Worker startup in [Program.cs](/Users/macprom/Desktop/nba/nba-dashboard/NbaDashb
 
 On boot it immediately runs:
 
-1. standings sync with previous season
+1. standings replay for the full configured season range
 2. season averages sync
 3. historical backfill
 
@@ -313,19 +313,28 @@ Then it schedules recurring Hangfire jobs:
 Important jobs:
 
 - [SyncBoxScoresJob.cs](/Users/macprom/Desktop/nba/nba-dashboard/NbaDashboard.Worker/Jobs/SyncBoxScoresJob.cs)
-  - Uses `leaguegamefinder` to discover games for a date.
-  - Fetches `boxscoretraditionalv3` and `boxscoreadvancedv3` per game.
+  - Uses `leaguegamefinder` to discover expected `GAME_ID`s for a date or season before deciding what to skip.
+  - Recurring `RunAsync(null)` now sweeps the most recent 3 completed UTC dates instead of only yesterday.
+  - Fetches `boxscoretraditionalv3` and `boxscoreadvancedv3` per incomplete game.
   - Upserts seasons, teams, players, game rows, and player game stat rows.
-  - Tracks idempotency in `SyncStates`.
+  - Treats a game as complete only when the `Games` row exists and traditional/advanced player coverage matches.
+  - Repairs stale old sync markers: if `boxscore_{gameId}` exists but coverage is incomplete, the job removes trust in that marker, records `boxscore_retry_{gameId}`, and retries the game.
+  - Returns season/date coverage audits so backfill completion is based on verified coverage, not only iteration.
 
 - `SyncSeasonAveragesJob`
   - Refreshes player season-level averages and advanced metrics.
 
 - `SyncStandingsJob`
-  - Builds daily standings snapshots and team metadata.
+  - Merges `leaguestandingsv3` with `leaguedashteamstats` (`MeasureType=Advanced`) by `TEAM_ID`.
+  - Uses `leaguestandingsv3` for ranks, records, streaks, conference/division metadata.
+  - Uses `leaguedashteamstats` as the canonical source for `OFF_RATING`, `DEF_RATING`, `NET_RATING`, and `PACE`.
+  - Replays standings across the full `NbaStats:BackfillStartDate` range on startup.
+  - Treats latest all-zero advanced ratings in `StandingsSnapshots` as stale and replays that season even if a sync marker exists.
+  - Reuses one stable snapshot date for completed seasons so historical replay updates existing final standings instead of creating duplicate dates.
 
 - `HistoricalBackfillJob`
   - Long-running historical ingest.
+  - Only writes `backfill_season_{year}` after the season coverage audit confirms every expected regular-season game is complete.
 
 - [PreWarmScoreboardJob.cs](/Users/macprom/Desktop/nba/nba-dashboard/NbaDashboard.Worker/Jobs/PreWarmScoreboardJob.cs)
   - Stores serialized daily scoreboard JSON in `CachedScoreboards`.
@@ -457,6 +466,20 @@ That means:
 - local “just run the worker” behavior is not lightweight
 - edits to worker startup should be treated as operational changes, not only code changes
 
+### 14.7 Standings advanced metrics source-of-truth
+
+As confirmed against the remote Linux server on 2026-04-08:
+
+- live `leaguestandingsv3` payloads do not expose team advanced ratings in the shape the old worker expected
+- the live payload includes standings/record fields plus scoring-style fields such as `PointsPG`, `OppPointsPG`, and `DiffPointsPG`
+- the canonical team advanced metrics (`OFF_RATING`, `DEF_RATING`, `NET_RATING`, `PACE`) are available from `leaguedashteamstats` with `MeasureType=Advanced`
+- `StandingsSnapshots.OffRating/DefRating/NetRating/Pace` should therefore be populated from `leaguedashteamstats`, not inferred from `leaguestandingsv3`
+
+Practical implication:
+
+- if standings ratings are zero again, first inspect whether `leaguedashteamstats` returned the canonical advanced headers and whether the latest `StandingsSnapshots` rows are all-zero
+- do not start debugging this in the frontend unless the database rows are already correct
+
 ## 15. Testing Reality
 
 Test harness:
@@ -475,6 +498,12 @@ Current test coverage is strongest around:
 - matchup endpoint
 - players endpoint
 - error handling and proxy/CORS-shaped requests
+- worker ingestion behavior now has focused tests for:
+  - null traditional response does not mark a game complete
+  - null advanced response leaves the game retryable
+  - complete traditional + advanced responses create final sync state
+  - historical backfill does not mark a season complete when coverage is still incomplete
+  - standings sync can upsert teams into a fresh DB
 
 Current test coverage is weaker around:
 

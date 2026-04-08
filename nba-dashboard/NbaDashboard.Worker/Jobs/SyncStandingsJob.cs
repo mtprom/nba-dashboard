@@ -10,15 +10,62 @@ namespace NbaDashboard.Worker.Jobs;
 
 public class SyncStandingsJob
 {
+    private static readonly Dictionary<string, string> TeamAdvancedBaseParams = new()
+    {
+        ["College"] = "",
+        ["Conference"] = "",
+        ["Country"] = "",
+        ["DateFrom"] = "",
+        ["DateTo"] = "",
+        ["Division"] = "",
+        ["DraftPick"] = "",
+        ["DraftYear"] = "",
+        ["GameScope"] = "",
+        ["GameSegment"] = "",
+        ["Height"] = "",
+        ["LastNGames"] = "0",
+        ["LeagueID"] = "00",
+        ["Location"] = "",
+        ["MeasureType"] = "Advanced",
+        ["Month"] = "0",
+        ["OpponentTeamID"] = "0",
+        ["Outcome"] = "",
+        ["PORound"] = "0",
+        ["PaceAdjust"] = "N",
+        ["PerMode"] = "PerGame",
+        ["Period"] = "0",
+        ["PlayerExperience"] = "",
+        ["PlayerPosition"] = "",
+        ["PlusMinus"] = "N",
+        ["Rank"] = "N",
+        ["SeasonSegment"] = "",
+        ["SeasonType"] = "Regular Season",
+        ["ShotClockRange"] = "",
+        ["StarterBench"] = "",
+        ["TeamID"] = "0",
+        ["TwoWay"] = "0",
+        ["VsConference"] = "",
+        ["VsDivision"] = "",
+        ["Weight"] = "",
+    };
+
     private readonly NbaStatsClient _nba;
     private readonly AppDbContext _db;
     private readonly ILogger<SyncStandingsJob> _logger;
+    private readonly int _startSeasonYear;
 
-    public SyncStandingsJob(NbaStatsClient nba, AppDbContext db, ILogger<SyncStandingsJob> logger)
+    public SyncStandingsJob(
+        NbaStatsClient nba,
+        AppDbContext db,
+        ILogger<SyncStandingsJob> logger,
+        IConfiguration config)
     {
         _nba = nba;
         _db = db;
         _logger = logger;
+
+        var startDate = DateOnly.Parse(config["NbaStats:BackfillStartDate"] ?? "2024-10-22");
+        _startSeasonYear = startDate.Month >= 10 ? startDate.Year : startDate.Year - 1;
     }
 
     /// <summary>
@@ -26,41 +73,59 @@ public class SyncStandingsJob
     /// </summary>
     public async Task RunAsync(CancellationToken ct = default)
     {
-        var now = DateTime.UtcNow;
-        int seasonYear = now.Month >= 10 ? now.Year : now.Year - 1;
-        await SyncSeasonAsync(seasonYear, ct);
+        int currentSeasonYear = GetCurrentSeasonYear();
+        await SyncSeasonAsync(currentSeasonYear, currentSeasonYear, ct);
     }
 
     /// <summary>
-    /// Sync current + previous season standings. Used on startup to ensure
-    /// season-vs-season comparisons have real NBA data for both seasons.
+    /// Replay standings for the full configured historical range. Used on startup
+    /// so historical season comparisons have real team advanced metrics.
     /// </summary>
-    public async Task RunWithPreviousAsync(CancellationToken ct = default)
+    public async Task RunBackfillRangeAsync(CancellationToken ct = default)
     {
-        var now = DateTime.UtcNow;
-        int seasonYear = now.Month >= 10 ? now.Year : now.Year - 1;
+        int currentSeasonYear = GetCurrentSeasonYear();
 
-        // Sync previous season first (only needs one snapshot — final standings)
-        await SyncSeasonAsync(seasonYear - 1, ct);
-        // Then current season
-        await SyncSeasonAsync(seasonYear, ct);
+        for (int seasonYear = _startSeasonYear; seasonYear <= currentSeasonYear; seasonYear++)
+        {
+            ct.ThrowIfCancellationRequested();
+            await SyncSeasonAsync(seasonYear, currentSeasonYear, ct);
+        }
     }
 
-    private async Task SyncSeasonAsync(int seasonYear, CancellationToken ct)
+    private async Task SyncSeasonAsync(int seasonYear, int currentSeasonYear, CancellationToken ct)
     {
         var seasonStr = $"{seasonYear}-{(seasonYear + 1) % 100:D2}";
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var isCompletedSeason = seasonYear < currentSeasonYear;
 
-        // Idempotency: skip if already synced today
-        var cursorKey = $"standings_{seasonStr}_{today:yyyy-MM-dd}";
-        if (await _db.SyncStates.AnyAsync(s => s.Key == cursorKey, ct))
+        var season = await _db.Seasons.FirstOrDefaultAsync(s => s.Year == seasonYear, ct);
+        if (season == null)
         {
-            _logger.LogInformation("Standings for {Season} on {Date} already synced, skipping",
-                seasonStr, today);
+            season = new Season { Year = seasonYear };
+            _db.Seasons.Add(season);
+            await _db.SaveChangesAsync(ct);
+        }
+
+        var cursorKey = isCompletedSeason
+            ? $"standings_complete_{seasonYear}"
+            : $"standings_{seasonStr}_{today:yyyy-MM-dd}";
+        var latestSnapshotIsStale = await LatestSnapshotHasAllZeroAdvancedMetricsAsync(season.Id, ct);
+
+        if (!latestSnapshotIsStale && await _db.SyncStates.AnyAsync(s => s.Key == cursorKey, ct))
+        {
+            _logger.LogInformation("Standings for {Season} already synced with key {Key}, skipping",
+                seasonStr, cursorKey);
             return;
         }
 
-        _logger.LogInformation("Fetching standings for {Season}", seasonStr);
+        if (latestSnapshotIsStale)
+        {
+            _logger.LogWarning(
+                "Latest standings snapshot for {Season} has all-zero advanced metrics; replaying despite sync state",
+                seasonStr);
+        }
+
+        _logger.LogInformation("Fetching standings and team advanced stats for {Season}", seasonStr);
 
         var resp = await _nba.GetAsync<LeagueStandingsV3Response>("leaguestandingsv3",
             new Dictionary<string, string>
@@ -77,23 +142,42 @@ public class SyncStandingsJob
             return;
         }
 
-        var idx = HeaderIndex(resultSet.Headers);
-
-        // Ensure season entity exists
-        var season = await _db.Seasons.FirstOrDefaultAsync(s => s.Year == seasonYear, ct);
-        if (season == null)
+        var advancedResp = await _nba.GetAsync<LeagueDashTeamStatsResponse>(
+            "leaguedashteamstats",
+            BuildTeamAdvancedParams(seasonStr),
+            ct);
+        var advancedSet = advancedResp?.ResultSets?.FirstOrDefault();
+        if (!TryBuildAdvancedLookup(advancedSet, seasonStr, out var advancedLookup))
         {
-            season = new Season { Year = seasonYear };
-            _db.Seasons.Add(season);
-            await _db.SaveChangesAsync(ct);
+            return;
         }
 
+        var idx = HeaderIndex(resultSet.Headers);
+        var standingsTeamIds = resultSet.RowSet
+            .Select(row => Int(row, idx, "TeamID"))
+            .Where(teamId => teamId != 0)
+            .Distinct()
+            .ToList();
+
+        var missingTeamIds = standingsTeamIds
+            .Where(teamId => !advancedLookup.ContainsKey(teamId))
+            .ToList();
+        if (missingTeamIds.Count > 0)
+        {
+            _logger.LogWarning(
+                "Advanced team stats missing for {Season}; team ids without advanced rows: {TeamIds}",
+                seasonStr, string.Join(", ", missingTeamIds));
+            return;
+        }
+
+        var snapshotDate = await ResolveSnapshotDateAsync(season.Id, seasonYear, currentSeasonYear, today, ct);
         int synced = 0;
         foreach (var row in resultSet.RowSet)
         {
             ct.ThrowIfCancellationRequested();
 
             var teamId = row[idx["TeamID"]].GetInt32();
+            var advanced = advancedLookup[teamId];
             var conference = Str(row, idx, "Conference");
             var division = idx.ContainsKey("Division") ? Str(row, idx, "Division") : "";
             var teamCity = Str(row, idx, "TeamCity");
@@ -105,7 +189,7 @@ public class SyncStandingsJob
             var snapshot = await _db.StandingsSnapshots
                 .FirstOrDefaultAsync(s =>
                     s.TeamId == teamId && s.SeasonId == season.Id
-                    && s.SnapshotDate == today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), ct);
+                    && s.SnapshotDate == snapshotDate, ct);
 
             var wins = Int(row, idx, "WINS");
             var losses = Int(row, idx, "LOSSES");
@@ -116,10 +200,6 @@ public class SyncStandingsJob
             var awayRecord = Str(row, idx, "ROAD");
             var last10 = Str(row, idx, "L10");
             var streak = Str(row, idx, "strCurrentStreak");
-            var offRating = DecAny(row, idx, "E_OFF_RATING", "OffRating");
-            var defRating = DecAny(row, idx, "E_DEF_RATING", "DefRating");
-            var netRating = DecAny(row, idx, "E_NET_RATING", "NetRating");
-            var pace = DecAny(row, idx, "E_PACE", "Pace");
 
             if (snapshot == null)
             {
@@ -127,7 +207,7 @@ public class SyncStandingsJob
                 {
                     TeamId = teamId,
                     SeasonId = season.Id,
-                    SnapshotDate = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                    SnapshotDate = snapshotDate,
                     Wins = wins,
                     Losses = losses,
                     WinPct = winPct,
@@ -137,10 +217,10 @@ public class SyncStandingsJob
                     AwayRecord = awayRecord,
                     Last10 = last10,
                     Streak = streak,
-                    OffRating = offRating,
-                    DefRating = defRating,
-                    NetRating = netRating,
-                    Pace = pace,
+                    OffRating = advanced.OffRating,
+                    DefRating = advanced.DefRating,
+                    NetRating = advanced.NetRating,
+                    Pace = advanced.Pace,
                 });
             }
             else
@@ -154,26 +234,20 @@ public class SyncStandingsJob
                 snapshot.AwayRecord = awayRecord;
                 snapshot.Last10 = last10;
                 snapshot.Streak = streak;
-                snapshot.OffRating = offRating;
-                snapshot.DefRating = defRating;
-                snapshot.NetRating = netRating;
-                snapshot.Pace = pace;
+                snapshot.OffRating = advanced.OffRating;
+                snapshot.DefRating = advanced.DefRating;
+                snapshot.NetRating = advanced.NetRating;
+                snapshot.Pace = advanced.Pace;
             }
 
             synced++;
         }
 
-        // Mark as synced
-        _db.SyncStates.Add(new SyncState
-        {
-            Key = cursorKey,
-            Value = "done",
-            UpdatedAt = DateTime.UtcNow,
-        });
+        UpsertSyncState(cursorKey, isCompletedSeason ? "complete" : "done");
 
         await _db.SaveChangesAsync(ct);
         _logger.LogInformation("Standings synced: {Count} teams for {Season} on {Date}",
-            synced, seasonStr, today);
+            synced, seasonStr, snapshotDate);
     }
 
     private static int Int(List<System.Text.Json.JsonElement> row,
@@ -212,23 +286,139 @@ public class SyncStandingsJob
             : el.GetString() ?? string.Empty;
     }
 
-    private static decimal DecAny(List<System.Text.Json.JsonElement> row,
-        Dictionary<string, int> idx, params string[] cols)
+    private bool TryBuildAdvancedLookup(
+        TeamStatsResultSet? resultSet,
+        string seasonStr,
+        out Dictionary<int, TeamAdvancedMetrics> lookup)
     {
-        foreach (var col in cols)
+        lookup = new Dictionary<int, TeamAdvancedMetrics>();
+
+        if (resultSet == null || resultSet.RowSet.Count == 0)
         {
-            if (idx.ContainsKey(col))
-                return Dec(row, idx, col);
+            _logger.LogWarning("No advanced team stats returned for {Season}", seasonStr);
+            return false;
         }
-        return 0m;
+
+        var idx = HeaderIndex(resultSet.Headers);
+        string[] requiredHeaders = ["TEAM_ID", "OFF_RATING", "DEF_RATING", "NET_RATING", "PACE"];
+        var missingHeaders = requiredHeaders.Where(header => !idx.ContainsKey(header)).ToList();
+        if (missingHeaders.Count > 0)
+        {
+            _logger.LogWarning(
+                "Advanced team stats for {Season} are missing required headers {Headers}. Returned headers: {ReturnedHeaders}",
+                seasonStr,
+                string.Join(", ", missingHeaders),
+                string.Join(", ", resultSet.Headers));
+            return false;
+        }
+
+        foreach (var row in resultSet.RowSet)
+        {
+            var teamId = Int(row, idx, "TEAM_ID");
+            if (teamId == 0)
+            {
+                continue;
+            }
+
+            lookup[teamId] = new TeamAdvancedMetrics
+            {
+                OffRating = Dec(row, idx, "OFF_RATING"),
+                DefRating = Dec(row, idx, "DEF_RATING"),
+                NetRating = Dec(row, idx, "NET_RATING"),
+                Pace = Dec(row, idx, "PACE"),
+            };
+        }
+
+        if (lookup.Count == 0)
+        {
+            _logger.LogWarning("Advanced team stats returned zero valid team rows for {Season}", seasonStr);
+            return false;
+        }
+
+        return true;
     }
 
     private static Dictionary<string, int> HeaderIndex(List<string> headers)
     {
-        var d = new Dictionary<string, int>();
+        var d = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < headers.Count; i++)
             d[headers[i]] = i;
         return d;
+    }
+
+    private static Dictionary<string, string> BuildTeamAdvancedParams(string seasonStr)
+    {
+        var parameters = new Dictionary<string, string>(TeamAdvancedBaseParams)
+        {
+            ["Season"] = seasonStr,
+        };
+        return parameters;
+    }
+
+    private async Task<bool> LatestSnapshotHasAllZeroAdvancedMetricsAsync(int seasonId, CancellationToken ct)
+    {
+        var latestDate = await _db.StandingsSnapshots
+            .Where(s => s.SeasonId == seasonId)
+            .MaxAsync(s => (DateTime?)s.SnapshotDate, ct);
+
+        if (latestDate == null)
+        {
+            return false;
+        }
+
+        var latestSnapshots = await _db.StandingsSnapshots
+            .Where(s => s.SeasonId == seasonId && s.SnapshotDate == latestDate.Value)
+            .Select(s => new { s.OffRating, s.DefRating, s.NetRating, s.Pace })
+            .ToListAsync(ct);
+
+        return latestSnapshots.Count > 0
+            && latestSnapshots.All(s =>
+                s.OffRating == 0m && s.DefRating == 0m && s.NetRating == 0m && s.Pace == 0m);
+    }
+
+    private async Task<DateTime> ResolveSnapshotDateAsync(
+        int seasonId,
+        int seasonYear,
+        int currentSeasonYear,
+        DateOnly today,
+        CancellationToken ct)
+    {
+        if (seasonYear == currentSeasonYear)
+        {
+            return today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        }
+
+        var latestDate = await _db.StandingsSnapshots
+            .Where(s => s.SeasonId == seasonId)
+            .MaxAsync(s => (DateTime?)s.SnapshotDate, ct);
+
+        return latestDate ?? new DateTime(seasonYear + 1, 6, 30, 0, 0, 0, DateTimeKind.Utc);
+    }
+
+    private void UpsertSyncState(string key, string value)
+    {
+        var existing = _db.SyncStates.Local.FirstOrDefault(s => s.Key == key)
+            ?? _db.SyncStates.FirstOrDefault(s => s.Key == key);
+
+        if (existing == null)
+        {
+            _db.SyncStates.Add(new SyncState
+            {
+                Key = key,
+                Value = value,
+                UpdatedAt = DateTime.UtcNow,
+            });
+            return;
+        }
+
+        existing.Value = value;
+        existing.UpdatedAt = DateTime.UtcNow;
+    }
+
+    private static int GetCurrentSeasonYear()
+    {
+        var now = DateTime.UtcNow;
+        return now.Month >= 10 ? now.Year : now.Year - 1;
     }
 
     private async Task<Team> UpsertTeamFromStandingsAsync(
@@ -277,5 +467,13 @@ public class SyncStandingsJob
         }
 
         return team;
+    }
+
+    private sealed class TeamAdvancedMetrics
+    {
+        public decimal OffRating { get; init; }
+        public decimal DefRating { get; init; }
+        public decimal NetRating { get; init; }
+        public decimal Pace { get; init; }
     }
 }

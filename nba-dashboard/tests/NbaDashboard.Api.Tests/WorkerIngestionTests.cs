@@ -128,10 +128,15 @@ public class WorkerIngestionTests
         var client = new ScriptedNbaStatsClient((endpoint, _) => endpoint switch
         {
             "leaguestandingsv3" => CreateStandingsResponse(),
+            "leaguedashteamstats" => CreateTeamAdvancedStatsResponse(),
             _ => null,
         });
 
-        var job = new SyncStandingsJob(client, db, NullLogger<SyncStandingsJob>.Instance);
+        var job = new SyncStandingsJob(
+            client,
+            db,
+            NullLogger<SyncStandingsJob>.Instance,
+            CreateStandingsConfig());
 
         await job.RunAsync();
 
@@ -139,7 +144,103 @@ public class WorkerIngestionTests
         Assert.NotNull(team);
         Assert.Equal("Boston", team!.City);
         Assert.Equal("Celtics", team.Name);
-        Assert.True(await db.StandingsSnapshots.AnyAsync(s => s.TeamId == 1610612738));
+        var snapshot = await db.StandingsSnapshots.SingleAsync(s => s.TeamId == 1610612738);
+        Assert.Equal(115.4m, snapshot.OffRating);
+        Assert.Equal(108.9m, snapshot.DefRating);
+        Assert.Equal(6.5m, snapshot.NetRating);
+        Assert.Equal(99.1m, snapshot.Pace);
+    }
+
+    [Fact]
+    public async Task SyncStandings_MissingAdvancedHeaders_DoesNotWriteSnapshotOrCursor()
+    {
+        using var db = CreateDbContext();
+        var client = new ScriptedNbaStatsClient((endpoint, _) => endpoint switch
+        {
+            "leaguestandingsv3" => CreateStandingsResponse(),
+            "leaguedashteamstats" => CreateTeamAdvancedStatsResponseMissingPace(),
+            _ => null,
+        });
+
+        var job = new SyncStandingsJob(
+            client,
+            db,
+            NullLogger<SyncStandingsJob>.Instance,
+            CreateStandingsConfig());
+
+        await job.RunAsync();
+
+        Assert.False(await db.StandingsSnapshots.AnyAsync());
+        Assert.False(await db.SyncStates.AnyAsync(s => s.Key.StartsWith("standings_")));
+    }
+
+    [Fact]
+    public async Task SyncStandings_ReplaysStaleZeroSnapshotDespiteExistingCursor()
+    {
+        using var db = CreateDbContext();
+        var currentSeasonYear = DateTime.UtcNow.Month >= 10 ? DateTime.UtcNow.Year : DateTime.UtcNow.Year - 1;
+        var season = new Season { Id = 1, Year = currentSeasonYear };
+        db.Seasons.Add(season);
+        db.Teams.Add(new Team
+        {
+            Id = 1610612738,
+            City = "Boston",
+            Name = "Celtics",
+            FullName = "Boston Celtics",
+            Abbreviation = "BOS",
+            Conference = "East",
+            Division = "Atlantic",
+        });
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow)
+            .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        db.StandingsSnapshots.Add(new StandingsSnapshot
+        {
+            TeamId = 1610612738,
+            SeasonId = season.Id,
+            SnapshotDate = today,
+            Wins = 57,
+            Losses = 22,
+            WinPct = 0.722m,
+            ConfRank = 1,
+            DivRank = 1,
+            HomeRecord = "30-9",
+            AwayRecord = "27-13",
+            Last10 = "7-3",
+            Streak = "W 1",
+            OffRating = 0m,
+            DefRating = 0m,
+            NetRating = 0m,
+            Pace = 0m,
+        });
+        db.SyncStates.Add(new SyncState
+        {
+            Key = $"standings_{currentSeasonYear}-{(currentSeasonYear + 1) % 100:D2}_{DateOnly.FromDateTime(DateTime.UtcNow):yyyy-MM-dd}",
+            Value = "done",
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+
+        var client = new ScriptedNbaStatsClient((endpoint, _) => endpoint switch
+        {
+            "leaguestandingsv3" => CreateStandingsResponse(),
+            "leaguedashteamstats" => CreateTeamAdvancedStatsResponse(),
+            _ => null,
+        });
+
+        var job = new SyncStandingsJob(
+            client,
+            db,
+            NullLogger<SyncStandingsJob>.Instance,
+            CreateStandingsConfig(currentSeasonYear));
+
+        await job.RunAsync();
+
+        var repaired = await db.StandingsSnapshots.SingleAsync(s => s.TeamId == 1610612738);
+        Assert.Equal(115.4m, repaired.OffRating);
+        Assert.Equal(108.9m, repaired.DefRating);
+        Assert.Equal(6.5m, repaired.NetRating);
+        Assert.Equal(99.1m, repaired.Pace);
     }
 
     private static AppDbContext CreateDbContext()
@@ -367,7 +468,7 @@ public class WorkerIngestionTests
                     [
                         "TeamID", "TeamCity", "TeamName", "TeamAbbreviation", "Conference", "Division",
                         "WINS", "LOSSES", "WinPCT", "PlayoffRank", "DivisionRank", "HOME", "ROAD", "L10",
-                        "strCurrentStreak", "E_OFF_RATING", "E_DEF_RATING", "E_NET_RATING", "E_PACE"
+                        "strCurrentStreak"
                     ],
                     RowSet =
                     [
@@ -375,12 +476,77 @@ public class WorkerIngestionTests
                             ToJson(1610612738), ToJson("Boston"), ToJson("Celtics"), ToJson("BOS"),
                             ToJson("East"), ToJson("Atlantic"), ToJson(57), ToJson(22), ToJson(0.722m),
                             ToJson(1), ToJson(1), ToJson("30-9"), ToJson("27-13"), ToJson("7-3"),
-                            ToJson("W 1"), ToJson(119.2m), ToJson(110.1m), ToJson(9.1m), ToJson(98.5m)
+                            ToJson("W 1")
                         ],
                     ],
                 },
             ],
         };
+    }
+
+    private static LeagueDashTeamStatsResponse CreateTeamAdvancedStatsResponse()
+    {
+        return new LeagueDashTeamStatsResponse
+        {
+            ResultSets =
+            [
+                new TeamStatsResultSet
+                {
+                    Name = "LeagueDashTeamStats",
+                    Headers =
+                    [
+                        "TEAM_ID", "TEAM_NAME", "E_OFF_RATING", "OFF_RATING", "E_DEF_RATING",
+                        "DEF_RATING", "E_NET_RATING", "NET_RATING", "E_PACE", "PACE"
+                    ],
+                    RowSet =
+                    [
+                        [
+                            ToJson(1610612738), ToJson("Boston Celtics"), ToJson(114.8m), ToJson(115.4m),
+                            ToJson(109.1m), ToJson(108.9m), ToJson(5.7m), ToJson(6.5m), ToJson(99.8m),
+                            ToJson(99.1m)
+                        ],
+                    ],
+                },
+            ],
+        };
+    }
+
+    private static LeagueDashTeamStatsResponse CreateTeamAdvancedStatsResponseMissingPace()
+    {
+        return new LeagueDashTeamStatsResponse
+        {
+            ResultSets =
+            [
+                new TeamStatsResultSet
+                {
+                    Name = "LeagueDashTeamStats",
+                    Headers =
+                    [
+                        "TEAM_ID", "TEAM_NAME", "OFF_RATING", "DEF_RATING", "NET_RATING"
+                    ],
+                    RowSet =
+                    [
+                        [
+                            ToJson(1610612738), ToJson("Boston Celtics"), ToJson(115.4m), ToJson(108.9m),
+                            ToJson(6.5m)
+                        ],
+                    ],
+                },
+            ],
+        };
+    }
+
+    private static IConfiguration CreateStandingsConfig(int? backfillStartYear = null)
+    {
+        var effectiveStartYear = backfillStartYear
+            ?? (DateTime.UtcNow.Month >= 10 ? DateTime.UtcNow.Year : DateTime.UtcNow.Year - 1);
+
+        return new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["NbaStats:BackfillStartDate"] = $"{effectiveStartYear}-10-01",
+            })
+            .Build();
     }
 
     private static JsonElement ToJson<T>(T value) => JsonSerializer.SerializeToElement(value);
