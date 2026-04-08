@@ -1,5 +1,4 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { SeasonStatDatum } from "@/types/history"
 
 interface SeasonIdentityTagsProps {
@@ -96,26 +95,24 @@ export default function SeasonIdentityTags({ data, teamColor }: SeasonIdentityTa
       <CardHeader className="pb-2">
         <CardTitle className="text-base font-medium">Season Identity</CardTitle>
       </CardHeader>
-      <CardContent className="p-0 px-6 pb-6">
-        <ScrollArea className="w-full" type="scroll">
-          <div className="flex gap-3 pb-2 min-w-max">
-            {tagged.map((d) => {
-              const tag = getSeasonTag(d)
-              const style = tagStyle(tag, teamColor)
-              return (
-                <div key={d.seasonYear} className="flex flex-col items-center gap-1 min-w-[56px]">
-                  <span className="text-[10px] text-muted-foreground">{d.seasonLabel}</span>
-                  <span
-                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap"
-                    style={style}
-                  >
-                    {tag}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        </ScrollArea>
+      <CardContent className="px-6 pb-6">
+        <div className="flex flex-wrap gap-x-3 gap-y-4">
+          {tagged.map((d) => {
+            const tag = getSeasonTag(d)
+            const style = tagStyle(tag, teamColor)
+            return (
+              <div key={d.seasonYear} className="flex min-w-[72px] flex-col items-center gap-1">
+                <span className="text-[10px] text-muted-foreground">{d.seasonLabel}</span>
+                <span
+                  className="rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap"
+                  style={style}
+                >
+                  {tag}
+                </span>
+              </div>
+            )
+          })}
+        </div>
       </CardContent>
     </Card>
   )

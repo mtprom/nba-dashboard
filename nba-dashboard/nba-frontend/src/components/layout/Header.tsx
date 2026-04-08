@@ -15,7 +15,7 @@ export default function Header() {
     <header className="border-b border-border bg-card">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-8 px-4">
         <Link to="/" className="text-lg font-bold tracking-tight text-foreground">
-          NBA Dashboard
+          .netBall
         </Link>
         <nav className="flex items-center gap-1">
           {navItems.map((item) => (
