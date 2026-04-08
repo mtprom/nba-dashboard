@@ -9,8 +9,8 @@ interface MonthlyHeatmapProps {
 }
 
 // Blue ramp: dark navy → blue-600 → blue-200
-function winPctToColor(winPct: number): string {
-  if (isNaN(winPct)) return "hsl(var(--muted))"
+function winPctToColor(winPct: number | null): string {
+  if (winPct === null || isNaN(winPct)) return "hsl(var(--muted))"
 
   const clamped = Math.max(0, Math.min(1, winPct))
 
@@ -35,7 +35,7 @@ function winPctToColor(winPct: number): string {
 function cellTitle(seasonYear: number, month: number, cell: HeatmapCell | undefined): string {
   const seasonLabel = formatSeasonLabel(seasonYear)
   const monthLabel = HEATMAP_MONTH_LABELS[month]
-  if (!cell || isNaN(cell.winPct)) return `${seasonLabel} · ${monthLabel}\nNo data`
+  if (!cell || cell.winPct === null) return `${seasonLabel} · ${monthLabel}\nNo data`
   const pct = (cell.winPct * 100).toFixed(1)
   return `${seasonLabel} · ${monthLabel}\n${cell.wins}W–${cell.losses}L · ${pct}%`
 }
@@ -83,7 +83,7 @@ export default function MonthlyHeatmap({ data, seasonYears }: MonthlyHeatmapProp
                   {/* Month cells */}
                   {HEATMAP_MONTHS.map((mo) => {
                     const cell = lookup.get(`${sy}:${mo}`)
-                    const color = winPctToColor(cell?.winPct ?? NaN)
+                    const color = winPctToColor(cell?.winPct ?? null)
                     const title = cellTitle(sy, mo, cell)
                     return (
                       <div

@@ -22,7 +22,7 @@ export interface HeatmapCell {
   month: number
   wins: number
   losses: number
-  winPct: number       // 0–1; NaN if no games
+  winPct: number | null // 0–1; null if no games
 }
 
 export interface HistoryMetrics {
