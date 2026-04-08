@@ -46,18 +46,33 @@ public class HistoricalBackfillJob
                 continue;
             }
 
-            await _syncJob.RunForSeasonAsync(year, ct);
+            var audit = await _syncJob.RunForSeasonAsync(year, ct);
 
-            // Mark completed seasons (not the current one — it may have new games)
-            if (year < currentSeasonYear)
+            // Mark completed seasons only when coverage audit confirms every expected game is complete.
+            if (year < currentSeasonYear && audit.IsComplete)
             {
-                _db.SyncStates.Add(new SyncState
+                var existing = await _db.SyncStates.FirstOrDefaultAsync(s => s.Key == cursorKey, ct);
+                if (existing == null)
                 {
-                    Key = cursorKey,
-                    Value = "done",
-                    UpdatedAt = DateTime.UtcNow,
-                });
+                    _db.SyncStates.Add(new SyncState
+                    {
+                        Key = cursorKey,
+                        Value = "done",
+                        UpdatedAt = DateTime.UtcNow,
+                    });
+                }
+                else
+                {
+                    existing.Value = "done";
+                    existing.UpdatedAt = DateTime.UtcNow;
+                }
                 await _db.SaveChangesAsync(ct);
+            }
+            else if (year < currentSeasonYear)
+            {
+                _logger.LogWarning(
+                    "Season {Season} remains incomplete after backfill audit: complete={Complete} incomplete={Incomplete} missing={Missing} orphanedSync={Orphaned}",
+                    audit.SeasonLabel, audit.CompleteGames, audit.IncompleteGames, audit.MissingGames, audit.OrphanedSyncStates);
             }
         }
 

@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\NbaDashboard.Api\NbaDashboard.Api.csproj" />
     <ProjectReference Include="..\..\NbaDashboard.Infrastructure\NbaDashboard.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\NbaDashboard.Worker\NbaDashboard.Worker.csproj" />
   </ItemGroup>
 
 </Project>

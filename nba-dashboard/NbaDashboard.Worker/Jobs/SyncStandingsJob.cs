@@ -94,34 +94,13 @@ public class SyncStandingsJob
             ct.ThrowIfCancellationRequested();
 
             var teamId = row[idx["TeamID"]].GetInt32();
-
-            // Skip if team doesn't exist in our DB
-            var team = await _db.Teams.FindAsync([teamId], ct);
-            if (team == null)
-            {
-                _logger.LogDebug("Team {TeamId} not in DB, skipping standings row", teamId);
-                continue;
-            }
-
-            // Always update team identity from standings (canonical source for current names)
             var conference = Str(row, idx, "Conference");
             var division = idx.ContainsKey("Division") ? Str(row, idx, "Division") : "";
             var teamCity = Str(row, idx, "TeamCity");
             var teamName = Str(row, idx, "TeamName");
             var teamAbbr = Str(row, idx, "TeamAbbreviation");
-            if (!string.IsNullOrEmpty(conference))
-            {
-                team.Conference = conference;
-                team.Division = division;
-            }
-            if (!string.IsNullOrEmpty(teamName))
-            {
-                team.Name = teamName;
-                team.FullName = $"{teamCity} {teamName}".Trim();
-                if (!string.IsNullOrEmpty(teamCity)) team.City = teamCity;
-                if (!string.IsNullOrEmpty(teamAbbr)) team.Abbreviation = teamAbbr;
-            }
-            team.UpdatedAt = DateTime.UtcNow;
+            var team = await UpsertTeamFromStandingsAsync(
+                teamId, teamCity, teamName, teamAbbr, conference, division, ct);
 
             var snapshot = await _db.StandingsSnapshots
                 .FirstOrDefaultAsync(s =>
@@ -250,5 +229,53 @@ public class SyncStandingsJob
         for (int i = 0; i < headers.Count; i++)
             d[headers[i]] = i;
         return d;
+    }
+
+    private async Task<Team> UpsertTeamFromStandingsAsync(
+        int teamId,
+        string city,
+        string name,
+        string abbreviation,
+        string conference,
+        string division,
+        CancellationToken ct)
+    {
+        city ??= string.Empty;
+        name ??= string.Empty;
+        abbreviation ??= string.Empty;
+        conference ??= string.Empty;
+        division ??= string.Empty;
+
+        var team = await _db.Teams.FindAsync([teamId], ct);
+        if (team == null)
+        {
+            team = new Team
+            {
+                Id = teamId,
+                City = city,
+                Name = name,
+                FullName = $"{city} {name}".Trim(),
+                Abbreviation = abbreviation,
+                Conference = conference,
+                Division = division,
+                UpdatedAt = DateTime.UtcNow,
+            };
+            _db.Teams.Add(team);
+        }
+        else
+        {
+            if (!string.IsNullOrEmpty(city)) team.City = city;
+            if (!string.IsNullOrEmpty(name))
+            {
+                team.Name = name;
+                team.FullName = $"{team.City} {team.Name}".Trim();
+            }
+            if (!string.IsNullOrEmpty(abbreviation)) team.Abbreviation = abbreviation;
+            if (!string.IsNullOrEmpty(conference)) team.Conference = conference;
+            if (!string.IsNullOrEmpty(division)) team.Division = division;
+            team.UpdatedAt = DateTime.UtcNow;
+        }
+
+        return team;
     }
 }

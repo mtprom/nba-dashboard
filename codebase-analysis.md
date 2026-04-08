@@ -112,6 +112,14 @@ Main ingestion path:
 6. API controllers query the database and shape responses into DTOs.
 7. Frontend pages call `/api/...` endpoints via axios and render cards, tables, and charts.
 
+Important ingestion invariants:
+
+- Box score sync is now strict: a game is only considered complete once the `Games` row exists and both `PlayerGameStats` and `PlayerGameAdvanced` contain matching player coverage for that `gameId`.
+- Successful game completion is tracked with `SyncStates.Key = boxscore_{gameId}`.
+- Incomplete or retryable game syncs are tracked separately with `SyncStates.Key = boxscore_retry_{gameId}`.
+- The recurring ongoing sync no longer checks only one day; `SyncBoxScoresJob.RunAsync(null)` sweeps the most recent 3 completed UTC dates so delayed NBA payload availability can self-heal without manual reruns.
+- Historical season backfill does not mark `backfill_season_{year}` complete unless a post-run coverage audit confirms that every expected regular-season `GAME_ID` for that season is fully present.
+
 Scoreboard path has an extra cache layer:
 
 1. `PreWarmScoreboardJob` fetches `scoreboardv2` every 15 minutes.
@@ -168,6 +176,12 @@ Key files:
 
 - [Program.cs](/Users/macprom/Desktop/nba/nba-dashboard/NbaDashboard.Worker/Program.cs)
 - jobs in `Jobs/`
+
+Operationally important worker behavior:
+
+- `PreWarmScoreboardJob` only caches today’s `scoreboardv2` payload into `CachedScoreboards`; it is not the authoritative game-history ingestion path.
+- `SyncBoxScoresJob` is the authoritative path for completed regular-season games in both rolling sync and historical backfill modes.
+- `SyncStandingsJob` now upserts teams directly from standings rows, which avoids the fresh-database failure mode where standings were previously skipped because teams were not seeded yet.
 
 ### `/Users/macprom/Desktop/nba/nba-dashboard/nba-frontend`
 

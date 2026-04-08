@@ -28,7 +28,7 @@ public class TeamsController : ControllerBase
     public async Task<ActionResult<MatchupHistoryDto>> GetMatchupHistory(
         int teamId, int opponentId, CancellationToken ct)
     {
-        var cacheKey = $"matchup_{Math.Min(teamId, opponentId)}_{Math.Max(teamId, opponentId)}";
+        var cacheKey = $"matchup_{teamId}_{opponentId}";
         if (_cache.TryGetValue(cacheKey, out MatchupHistoryDto? cached))
             return Ok(cached);
 
