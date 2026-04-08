@@ -47,6 +47,8 @@ public class HistoryController : ControllerBase
 
         try
         {
+            var todayUtc = DateTime.UtcNow.Date;
+
             // Step 1: Resolve season IDs → year mapping
             var seasonMap = await _db.Seasons
                 .Where(s => s.Year >= fromSeason && s.Year <= toSeason)
@@ -58,6 +60,9 @@ public class HistoryController : ControllerBase
             var baseQuery = _db.Games
                 .Where(g => g.Status == "Final"
                          && !g.Postseason
+                         && g.HomeScore > 0
+                         && g.VisitorScore > 0
+                         && g.Date.Date <= todayUtc
                          && seasonIds.Contains(g.SeasonId));
 
             if (teamId.HasValue)
@@ -190,12 +195,14 @@ public class HistoryController : ControllerBase
 
                     var homeGames = sg.Where(g => g.HomeTeamId == tid).ToList();
                     var awayGames = sg.Where(g => g.VisitorTeamId == tid).ToList();
-                    homeWp = homeGames.Count > 0
-                        ? Math.Round((double)homeGames.Count(g => g.HomeScore > g.VisitorScore) / homeGames.Count, 3)
-                        : null;
-                    awayWp = awayGames.Count > 0
-                        ? Math.Round((double)awayGames.Count(g => g.VisitorScore > g.HomeScore) / awayGames.Count, 3)
-                        : null;
+                    var homeWins = homeGames.Count(g => g.HomeScore > g.VisitorScore);
+                    var awayWins = awayGames.Count(g => g.VisitorScore > g.HomeScore);
+                    homeWp = wins > 0
+                        ? Math.Round((double)homeWins / wins, 3)
+                        : 0;
+                    awayWp = wins > 0
+                        ? Math.Round((double)awayWins / wins, 3)
+                        : 0;
                 }
                 else
                 {
