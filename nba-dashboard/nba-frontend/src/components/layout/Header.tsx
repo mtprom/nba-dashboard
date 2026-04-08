@@ -2,9 +2,10 @@ import { Link, useLocation } from "react-router-dom"
 
 export default function Header() {
   const location = useLocation()
+  const isHistoryRoute = location.pathname === "/" || location.pathname === "/history"
 
   const navItems = [
-    { label: "Games", path: "/" },
+    { label: "Games", path: "/games" },
     { label: "Standings", path: "/standings" },
     { label: "Hot", path: "/hot" },
     { label: "History", path: "/history" },
@@ -22,7 +23,7 @@ export default function Header() {
               key={item.path}
               to={item.path}
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                location.pathname === item.path
+                (item.path === "/history" && isHistoryRoute) || location.pathname === item.path
                   ? "bg-muted text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
               }`}

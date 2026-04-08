@@ -16,7 +16,7 @@ import GameTypeDistribution from "@/components/history/GameTypeDistribution"
 import { Skeleton } from "@/components/ui/skeleton"
 import { HistoryFilter } from "@/types/history"
 import { getHistory, type HistoryResponse } from "@/api/history"
-import { getTeamColors } from "@/data/teams"
+import { getTeamColorsDark } from "@/data/teams"
 
 export const MIN_SEASON = 1996
 export const MAX_SEASON = 2025
@@ -58,7 +58,7 @@ export default function HistoryPage() {
   const isTeamSelected = filter.teamId !== null
   const isFullRange = filter.fromSeason === MIN_SEASON && filter.toSeason === MAX_SEASON
   const teamColor = isTeamSelected
-    ? getTeamColors(filter.teamId!).primary
+    ? getTeamColorsDark(filter.teamId!).primary
     : "hsl(var(--primary))"
 
   return (
