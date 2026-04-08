@@ -7,7 +7,6 @@ export interface HistoryGame {
   awayTeamId: number
   homeScore: number
   awayScore: number
-  isOT: boolean
 }
 
 export interface SeasonBarDatum {
@@ -29,7 +28,30 @@ export interface HistoryMetrics {
   totalGames: number
   seasonsCovered: number
   avgMarginOfVictory: number
-  overtimeRate: number  // percentage e.g. 10.6
+}
+
+export interface SeasonStatDatum {
+  seasonYear: number
+  seasonLabel: string
+  gameCount: number
+  // Team mode (null when all teams)
+  winPct: number | null
+  homeWinPct: number | null
+  awayWinPct: number | null
+  // All-teams mode (null when team selected)
+  avgTotalPoints: number | null
+  leagueHomeWinPct: number | null
+  // Both modes
+  closeGames: number
+  moderateGames: number
+  blowoutGames: number
+}
+
+export interface BestWorstGames {
+  largestWin: HistoryGame | null
+  largestLoss: HistoryGame | null
+  highestScoringGame: HistoryGame | null
+  lowestScoringGame: HistoryGame | null
 }
 
 export interface HistoryFilter {

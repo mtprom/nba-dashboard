@@ -1,4 +1,4 @@
-import { Activity, Calendar, TrendingUp, Clock } from "lucide-react"
+import { Activity, Calendar, TrendingUp } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { HistoryMetrics } from "@/types/history"
 
@@ -23,15 +23,10 @@ export default function SummaryCards({ metrics }: SummaryCardsProps) {
       label: "Avg Margin of Victory",
       value: metrics.totalGames > 0 ? `${metrics.avgMarginOfVictory.toFixed(1)} pts` : "—",
     },
-    {
-      icon: Clock,
-      label: "Overtime Rate",
-      value: metrics.totalGames > 0 ? `${metrics.overtimeRate.toFixed(1)}%` : "—",
-    },
   ]
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
       {cards.map(({ icon: Icon, label, value }) => (
         <Card key={label}>
           <CardHeader className="pb-2">

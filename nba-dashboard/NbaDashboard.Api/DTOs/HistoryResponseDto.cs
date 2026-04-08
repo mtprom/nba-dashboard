@@ -7,5 +7,6 @@ public class HistoryResponseDto
     public List<HeatmapCellDto> HeatmapData { get; set; } = [];
     public List<HistoryGameDto> ClosestGames { get; set; } = [];
     public List<HistoryGameDto> BlowoutGames { get; set; } = [];
-    public List<HistoryGameDto> OtGames { get; set; } = [];
+    public List<SeasonStatDatumDto> SeasonStats { get; set; } = [];
+    public BestWorstGamesDto? BestWorstGames { get; set; }
 }

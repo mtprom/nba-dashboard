@@ -1,5 +1,12 @@
 import { apiClient } from "./client"
-import type { HistoryMetrics, SeasonBarDatum, HeatmapCell, HistoryGame } from "@/types/history"
+import type {
+  HistoryMetrics,
+  SeasonBarDatum,
+  HeatmapCell,
+  HistoryGame,
+  SeasonStatDatum,
+  BestWorstGames,
+} from "@/types/history"
 
 export interface HistoryResponse {
   metrics: HistoryMetrics
@@ -7,7 +14,8 @@ export interface HistoryResponse {
   heatmapData: HeatmapCell[]
   closestGames: HistoryGame[]
   blowoutGames: HistoryGame[]
-  otGames: HistoryGame[]
+  seasonStats: SeasonStatDatum[]
+  bestWorstGames: BestWorstGames | null
 }
 
 export async function getHistory(

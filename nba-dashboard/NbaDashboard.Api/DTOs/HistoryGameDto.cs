@@ -10,5 +10,4 @@ public class HistoryGameDto
     public int AwayTeamId { get; set; }
     public int HomeScore { get; set; }
     public int AwayScore { get; set; }
-    public bool IsOT { get; set; }
 }

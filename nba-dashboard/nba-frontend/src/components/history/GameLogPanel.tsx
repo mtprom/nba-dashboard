@@ -1,10 +1,9 @@
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
 import { HistoryGame, SortField, SortDirection } from "@/types/history"
 import { getMargin } from "@/data/mock-history"
 import { TEAM_INFO, getTeamColorsDark } from "@/data/teams"
@@ -12,10 +11,9 @@ import { TEAM_INFO, getTeamColorsDark } from "@/data/teams"
 interface GameLogPanelProps {
   closestGames: HistoryGame[]
   blowoutGames: HistoryGame[]
-  otGames: HistoryGame[]
 }
 
-type Tab = "closest" | "blowouts" | "ot"
+type Tab = "closest" | "blowouts"
 
 function TeamCell({ teamId }: { teamId: number }) {
   const { primary } = getTeamColorsDark(teamId)
@@ -31,7 +29,7 @@ function TeamCell({ teamId }: { teamId: number }) {
   )
 }
 
-function formatDate(iso: string): string {
+export function formatDate(iso: string): string {
   return new Date(iso + "T12:00:00").toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -85,13 +83,12 @@ function GameTable({ games }: { games: HistoryGame[] }) {
           >
             Margin <SortIcon field="margin" activeField={sortField} direction={sortDir} />
           </TableHead>
-          <TableHead className="w-[36px]" />
         </TableRow>
       </TableHeader>
       <TableBody>
         {sorted.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={6} className="text-center text-muted-foreground text-sm py-8">
+            <TableCell colSpan={5} className="text-center text-muted-foreground text-sm py-8">
               No games match current filters.
             </TableCell>
           </TableRow>
@@ -121,13 +118,6 @@ function GameTable({ games }: { games: HistoryGame[] }) {
                 <TableCell className="text-right text-xs text-muted-foreground">
                   {getMargin(g)} pts
                 </TableCell>
-                <TableCell>
-                  {g.isOT && (
-                    <Badge variant="outline" className="text-[9px] py-0 px-1 h-4">
-                      OT
-                    </Badge>
-                  )}
-                </TableCell>
               </TableRow>
             )
           })
@@ -137,13 +127,12 @@ function GameTable({ games }: { games: HistoryGame[] }) {
   )
 }
 
-export default function GameLogPanel({ closestGames, blowoutGames, otGames }: GameLogPanelProps) {
+export default function GameLogPanel({ closestGames, blowoutGames }: GameLogPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>("closest")
 
   const tabGames: Record<Tab, HistoryGame[]> = {
     closest: closestGames,
     blowouts: blowoutGames,
-    ot: otGames,
   }
 
   return (
@@ -156,9 +145,8 @@ export default function GameLogPanel({ closestGames, blowoutGames, otGames }: Ga
           <TabsList className="mb-3">
             <TabsTrigger value="closest">Closest</TabsTrigger>
             <TabsTrigger value="blowouts">Blowouts</TabsTrigger>
-            <TabsTrigger value="ot">OT Games</TabsTrigger>
           </TabsList>
-          {(["closest", "blowouts", "ot"] as Tab[]).map((tab) => (
+          {(["closest", "blowouts"] as Tab[]).map((tab) => (
             <TabsContent key={tab} value={tab} className="mt-0">
               <ScrollArea className="h-[360px]">
                 <GameTable games={tabGames[tab]} />

@@ -7,7 +7,7 @@ interface FilterBarProps {
   onReset: () => void
 }
 
-const SEASONS = Array.from({ length: 31 }, (_, i) => 1994 + i) // 1994–2024
+const SEASONS = Array.from({ length: 30 }, (_, i) => 1996 + i) // 1996–2025
 
 const SORTED_TEAMS = Object.entries(TEAM_INFO).sort((a, b) =>
   a[1].fullName.localeCompare(b[1].fullName)

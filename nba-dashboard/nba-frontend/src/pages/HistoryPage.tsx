@@ -6,14 +6,25 @@ import SummaryCards from "@/components/history/SummaryCards"
 import SeasonBarChart from "@/components/history/SeasonBarChart"
 import GameLogPanel from "@/components/history/GameLogPanel"
 import MonthlyHeatmap from "@/components/history/MonthlyHeatmap"
+import TeamTrajectoryChart from "@/components/history/TeamTrajectoryChart"
+import HomeAwayWinRateSplit from "@/components/history/HomeAwayWinRateSplit"
+import SeasonIdentityTags from "@/components/history/SeasonIdentityTags"
+import BestWorstGamesPanel from "@/components/history/BestWorstGamesPanel"
+import ScoringEnvironmentTrend from "@/components/history/ScoringEnvironmentTrend"
+import HomeAwayWinRateTrend from "@/components/history/HomeAwayWinRateTrend"
+import GameTypeDistribution from "@/components/history/GameTypeDistribution"
 import { Skeleton } from "@/components/ui/skeleton"
 import { HistoryFilter } from "@/types/history"
 import { getHistory, type HistoryResponse } from "@/api/history"
+import { getTeamColors } from "@/data/teams"
+
+export const MIN_SEASON = 1996
+export const MAX_SEASON = 2025
 
 const DEFAULT_FILTER: HistoryFilter = {
   teamId: null,
-  fromSeason: 2000,
-  toSeason: 2024,
+  fromSeason: MIN_SEASON,
+  toSeason: MAX_SEASON,
 }
 
 export default function HistoryPage() {
@@ -44,6 +55,12 @@ export default function HistoryPage() {
     [data?.heatmapData]
   )
 
+  const isTeamSelected = filter.teamId !== null
+  const isFullRange = filter.fromSeason === MIN_SEASON && filter.toSeason === MAX_SEASON
+  const teamColor = isTeamSelected
+    ? getTeamColors(filter.teamId!).primary
+    : "hsl(var(--primary))"
+
   return (
     <div>
       <Header />
@@ -66,39 +83,60 @@ export default function HistoryPage() {
 
         {loading || !data ? (
           <div className="space-y-6">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {Array.from({ length: 4 }).map((_, i) => (
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 3 }).map((_, i) => (
                 <Skeleton key={i} className="h-[106px] rounded-lg" />
               ))}
             </div>
-            <Skeleton className="h-[340px] rounded-lg" />
+            <Skeleton className="h-[300px] rounded-lg" />
+            <Skeleton className="h-[300px] rounded-lg" />
             <div className="grid grid-cols-1 xl:grid-cols-[55fr_45fr] gap-6">
               <Skeleton className="h-[440px] rounded-lg" />
               <Skeleton className="h-[440px] rounded-lg" />
             </div>
           </div>
         ) : (
-          <>
-            {/* Summary cards */}
-            <div className="mb-6">
-              <SummaryCards metrics={data.metrics} />
-            </div>
+          <div className="space-y-6">
+            {/* Summary cards — always shown */}
+            <SummaryCards metrics={data.metrics} />
 
-            {/* Season bar chart */}
-            <div className="mb-6">
-              <SeasonBarChart data={data.seasonBarData} />
-            </div>
+            {/* ALL TEAMS mode */}
+            {!isTeamSelected && (
+              <>
+                {isFullRange && <SeasonBarChart data={data.seasonBarData} />}
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  <ScoringEnvironmentTrend data={data.seasonStats} />
+                  <HomeAwayWinRateTrend data={data.seasonStats} />
+                </div>
+                <GameTypeDistribution data={data.seasonStats} />
+              </>
+            )}
 
-            {/* Game log + heatmap side by side */}
-            <div className="grid grid-cols-1 xl:grid-cols-[55fr_45fr] gap-6">
+            {/* TEAM mode */}
+            {isTeamSelected && (
+              <>
+                <TeamTrajectoryChart data={data.seasonStats} teamColor={teamColor} />
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  <HomeAwayWinRateSplit data={data.seasonStats} teamColor={teamColor} />
+                  {data.bestWorstGames && (
+                    <BestWorstGamesPanel data={data.bestWorstGames} teamColor={teamColor} />
+                  )}
+                </div>
+                <SeasonIdentityTags data={data.seasonStats} teamColor={teamColor} />
+              </>
+            )}
+
+            {/* Game log + heatmap — always shown; heatmap only in team mode */}
+            <div className={`grid gap-6 ${isTeamSelected ? "grid-cols-1 xl:grid-cols-[55fr_45fr]" : "grid-cols-1"}`}>
               <GameLogPanel
                 closestGames={data.closestGames}
                 blowoutGames={data.blowoutGames}
-                otGames={data.otGames}
               />
-              <MonthlyHeatmap data={data.heatmapData} seasonYears={heatmapSeasons} />
+              {isTeamSelected && (
+                <MonthlyHeatmap data={data.heatmapData} seasonYears={heatmapSeasons} />
+              )}
             </div>
-          </>
+          </div>
         )}
       </PageContainer>
     </div>

@@ -34,8 +34,8 @@ public class HistoryController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<HistoryResponseDto>> GetHistory(
         [FromQuery] int? teamId,
-        [FromQuery] int fromSeason = 2000,
-        [FromQuery] int toSeason = 2024,
+        [FromQuery] int fromSeason = 1996,
+        [FromQuery] int toSeason = 2025,
         CancellationToken ct = default)
     {
         if (fromSeason > toSeason)
@@ -76,7 +76,6 @@ public class HistoryController : ControllerBase
                     g.VisitorTeamId,
                     g.HomeScore,
                     g.VisitorScore,
-                    g.Period,
                 })
                 .AsNoTracking()
                 .ToListAsync(ct);
@@ -87,14 +86,12 @@ public class HistoryController : ControllerBase
             var totalGames = games.Count;
             var seasonYearsInData = games.Select(g => seasonMap[g.SeasonId]).Distinct().Count();
             var totalMargin = games.Sum(g => Math.Abs(g.HomeScore - g.VisitorScore));
-            var otCount = games.Count(g => g.Period > 4);
 
             var metrics = new HistoryMetricsDto
             {
                 TotalGames = totalGames,
                 SeasonsCovered = seasonYearsInData,
                 AvgMarginOfVictory = totalGames > 0 ? Math.Round((double)totalMargin / totalGames, 1) : 0,
-                OvertimeRate = totalGames > 0 ? Math.Round((double)otCount / totalGames * 100, 1) : 0,
             };
 
             // -- Season bar data --
@@ -174,6 +171,55 @@ public class HistoryController : ControllerBase
                 }
             }
 
+            // -- Season stats --
+            var seasonStatsList = seasonsInData.Select(sy =>
+            {
+                var sg = games.Where(g => seasonMap[g.SeasonId] == sy).ToList();
+                var gc = sg.Count;
+
+                double? winPct = null, homeWp = null, awayWp = null;
+                double? avgTotal = null, leagueHomeWp = null;
+
+                if (teamId.HasValue)
+                {
+                    var tid = teamId.Value;
+                    var wins = sg.Count(g =>
+                        (g.HomeTeamId == tid && g.HomeScore > g.VisitorScore) ||
+                        (g.VisitorTeamId == tid && g.VisitorScore > g.HomeScore));
+                    winPct = gc > 0 ? Math.Round((double)wins / gc, 3) : null;
+
+                    var homeGames = sg.Where(g => g.HomeTeamId == tid).ToList();
+                    var awayGames = sg.Where(g => g.VisitorTeamId == tid).ToList();
+                    homeWp = homeGames.Count > 0
+                        ? Math.Round((double)homeGames.Count(g => g.HomeScore > g.VisitorScore) / homeGames.Count, 3)
+                        : null;
+                    awayWp = awayGames.Count > 0
+                        ? Math.Round((double)awayGames.Count(g => g.VisitorScore > g.HomeScore) / awayGames.Count, 3)
+                        : null;
+                }
+                else
+                {
+                    avgTotal = gc > 0 ? Math.Round(sg.Average(g => (double)(g.HomeScore + g.VisitorScore)), 1) : null;
+                    var homeWins = sg.Count(g => g.HomeScore > g.VisitorScore);
+                    leagueHomeWp = gc > 0 ? Math.Round((double)homeWins / gc, 3) : null;
+                }
+
+                return new SeasonStatDatumDto
+                {
+                    SeasonYear = sy,
+                    SeasonLabel = $"{sy}-{(sy + 1) % 100:D2}",
+                    GameCount = gc,
+                    WinPct = winPct,
+                    HomeWinPct = homeWp,
+                    AwayWinPct = awayWp,
+                    AvgTotalPoints = avgTotal,
+                    LeagueHomeWinPct = leagueHomeWp,
+                    CloseGames = sg.Count(g => Math.Abs(g.HomeScore - g.VisitorScore) <= 5),
+                    ModerateGames = sg.Count(g => { var m = Math.Abs(g.HomeScore - g.VisitorScore); return m >= 6 && m <= 19; }),
+                    BlowoutGames = sg.Count(g => Math.Abs(g.HomeScore - g.VisitorScore) >= 20),
+                };
+            }).ToList();
+
             // -- Game log subsets --
             HistoryGameDto ToDto(dynamic g) => new()
             {
@@ -185,7 +231,6 @@ public class HistoryController : ControllerBase
                 AwayTeamId = g.VisitorTeamId,
                 HomeScore = g.HomeScore,
                 AwayScore = g.VisitorScore,
-                IsOT = g.Period > 4,
             };
 
             var closestGames = games
@@ -203,12 +248,41 @@ public class HistoryController : ControllerBase
                 .Select(g => ToDto(g))
                 .ToList();
 
-            var otGames = games
-                .Where(g => g.Period > 4)
-                .OrderByDescending(g => g.Date)
-                .Take(20)
-                .Select(g => ToDto(g))
-                .ToList();
+            // -- Best/worst games (team mode only) --
+            BestWorstGamesDto? bestWorstGames = null;
+            if (teamId.HasValue)
+            {
+                var tid = teamId.Value;
+                var teamWins = games
+                    .Where(g => (g.HomeTeamId == tid && g.HomeScore > g.VisitorScore) ||
+                                (g.VisitorTeamId == tid && g.VisitorScore > g.HomeScore))
+                    .ToList();
+                var teamLosses = games
+                    .Where(g => (g.HomeTeamId == tid && g.HomeScore < g.VisitorScore) ||
+                                (g.VisitorTeamId == tid && g.VisitorScore < g.HomeScore))
+                    .ToList();
+
+                bestWorstGames = new BestWorstGamesDto
+                {
+                    LargestWin = teamWins
+                        .OrderByDescending(g => Math.Abs(g.HomeScore - g.VisitorScore))
+                        .Select(g => ToDto(g))
+                        .FirstOrDefault(),
+                    LargestLoss = teamLosses
+                        .OrderByDescending(g => Math.Abs(g.HomeScore - g.VisitorScore))
+                        .Select(g => ToDto(g))
+                        .FirstOrDefault(),
+                    HighestScoringGame = games
+                        .OrderByDescending(g => g.HomeScore + g.VisitorScore)
+                        .Select(g => ToDto(g))
+                        .FirstOrDefault(),
+                    LowestScoringGame = games
+                        .Where(g => g.HomeScore > 0 && g.VisitorScore > 0)
+                        .OrderBy(g => g.HomeScore + g.VisitorScore)
+                        .Select(g => ToDto(g))
+                        .FirstOrDefault(),
+                };
+            }
 
             // Step 4: Assemble, cache, return
             var result = new HistoryResponseDto
@@ -218,7 +292,8 @@ public class HistoryController : ControllerBase
                 HeatmapData = heatmapData,
                 ClosestGames = closestGames,
                 BlowoutGames = blowoutGames,
-                OtGames = otGames,
+                SeasonStats = seasonStatsList,
+                BestWorstGames = bestWorstGames,
             };
 
             _cache.Set(cacheKey, result, new MemoryCacheEntryOptions
