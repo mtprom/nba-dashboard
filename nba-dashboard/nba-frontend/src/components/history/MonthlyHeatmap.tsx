@@ -6,30 +6,40 @@ import { HEATMAP_MONTHS, HEATMAP_MONTH_LABELS, formatSeasonLabel } from "@/data/
 interface MonthlyHeatmapProps {
   data: HeatmapCell[]
   seasonYears: number[]  // all seasons to show as rows, sorted asc
+  teamColor: string
 }
 
-// Blue ramp: dark navy → blue-600 → blue-200
-function winPctToColor(winPct: number | null): string {
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  if (!hex.startsWith("#") || hex.length !== 7) return null
+  return {
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16),
+  }
+}
+
+function mixRgb(
+  a: { r: number; g: number; b: number },
+  b: { r: number; g: number; b: number },
+  t: number
+): string {
+  const clamped = Math.max(0, Math.min(1, t))
+  const r = Math.round(a.r + (b.r - a.r) * clamped)
+  const g = Math.round(a.g + (b.g - a.g) * clamped)
+  const bVal = Math.round(a.b + (b.b - a.b) * clamped)
+  return `rgb(${r},${g},${bVal})`
+}
+
+function winPctToColor(winPct: number | null, teamColor: string): string {
   if (winPct === null || isNaN(winPct)) return "hsl(var(--muted))"
 
   const clamped = Math.max(0, Math.min(1, winPct))
+  const teamRgb = hexToRgb(teamColor)
 
-  // Two-segment gradient
-  let r: number, g: number, b: number
-  if (clamped <= 0.5) {
-    // 0 → 0.5: dark navy (20,20,40) → blue-600 (37,99,235)
-    const t = clamped * 2
-    r = Math.round(20 + t * (37 - 20))
-    g = Math.round(20 + t * (99 - 20))
-    b = Math.round(40 + t * (235 - 40))
-  } else {
-    // 0.5 → 1.0: blue-600 (37,99,235) → blue-200 (191,219,254)
-    const t = (clamped - 0.5) * 2
-    r = Math.round(37 + t * (191 - 37))
-    g = Math.round(99 + t * (219 - 99))
-    b = Math.round(235 + t * (254 - 235))
-  }
-  return `rgb(${r},${g},${b})`
+  if (!teamRgb) return "hsl(var(--muted))"
+
+  const lowRgb = { r: 94, g: 100, b: 112 }
+  return mixRgb(lowRgb, teamRgb, clamped)
 }
 
 function cellTitle(seasonYear: number, month: number, cell: HeatmapCell | undefined): string {
@@ -40,7 +50,7 @@ function cellTitle(seasonYear: number, month: number, cell: HeatmapCell | undefi
   return `${seasonLabel} · ${monthLabel}\n${cell.wins}W–${cell.losses}L · ${pct}%`
 }
 
-export default function MonthlyHeatmap({ data, seasonYears }: MonthlyHeatmapProps) {
+export default function MonthlyHeatmap({ data, seasonYears, teamColor }: MonthlyHeatmapProps) {
   // Build lookup: `${seasonYear}:${month}` → HeatmapCell
   const lookup = new Map<string, HeatmapCell>()
   for (const cell of data) {
@@ -83,7 +93,7 @@ export default function MonthlyHeatmap({ data, seasonYears }: MonthlyHeatmapProp
                   {/* Month cells */}
                   {HEATMAP_MONTHS.map((mo) => {
                     const cell = lookup.get(`${sy}:${mo}`)
-                    const color = winPctToColor(cell?.winPct ?? null)
+                    const color = winPctToColor(cell?.winPct ?? null, teamColor)
                     const title = cellTitle(sy, mo, cell)
                     return (
                       <div
@@ -106,14 +116,13 @@ export default function MonthlyHeatmap({ data, seasonYears }: MonthlyHeatmapProp
           <div
             className="h-2.5 flex-1 rounded-sm"
             style={{
-              background:
-                "linear-gradient(to right, rgb(20,20,40), rgb(37,99,235), rgb(191,219,254))",
+              background: `linear-gradient(to right, rgb(94,100,112), ${teamColor})`,
             }}
           />
           <span className="text-[10px] text-muted-foreground">100%</span>
         </div>
         <p className="mt-1 text-[10px] text-muted-foreground">
-          Hover cells for details · Gray = no data
+          Hover cells for details · Gray = no data · Team color ramp = low to high win rate
         </p>
       </CardContent>
     </Card>

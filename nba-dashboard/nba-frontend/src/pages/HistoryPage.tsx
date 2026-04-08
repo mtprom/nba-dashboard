@@ -133,7 +133,11 @@ export default function HistoryPage() {
                 blowoutGames={data.blowoutGames}
               />
               {isTeamSelected && (
-                <MonthlyHeatmap data={data.heatmapData} seasonYears={heatmapSeasons} />
+                <MonthlyHeatmap
+                  data={data.heatmapData}
+                  seasonYears={heatmapSeasons}
+                  teamColor={teamColor}
+                />
               )}
             </div>
           </div>
