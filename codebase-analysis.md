@@ -1,6 +1,6 @@
 # NBA Dashboard Codebase Analysis
 
-Updated: 2026-04-08
+Updated: 2026-04-08 (includes changes through today)
 
 Purpose: this is an operational reference for agent-assisted coding in this repository. It is written for Codex, Claude Code, and humans who need a fast, accurate model of how the system is assembled, where behavior lives, and how to make changes safely.
 
@@ -219,7 +219,8 @@ Important response shaping:
 
 Routes in [App.tsx](/Users/macprom/Desktop/nba/nba-dashboard/nba-frontend/src/App.tsx):
 
-- `/` -> `GamePreviewPage`
+- `/` -> `HistoryPage`
+- `/games` -> `GamePreviewPage`
 - `/standings` -> `StandingsPage`
 - `/hot` -> `HotPage`
 - `/history` -> `HistoryPage`
@@ -234,12 +235,15 @@ Practical frontend architecture:
 - Pages own fetch orchestration and page-level state.
 - Presentational logic is pushed into components.
 - Team branding and fallback metadata live in `src/data/teams.ts`.
+- Header brand text is currently `.netBall`, not `NBA Dashboard`.
 
 Notable page behavior:
 
 - `GamePreviewPage` loads upcoming games, then bulk-loads season averages for all teams on the slate, and lazily loads matchup history when a game is selected.
 - `HistoryPage` is analytics-heavy and depends on a single aggregated API endpoint instead of several smaller ones.
+- `HistoryPage` is also the default landing page for `/`; Today’s Games lives at `/games`.
 - `HotPage` depends on backend-computed ranking logic, not client-side calculations.
+- Team-specific history visuals use `getTeamColorsDark(...)` as the source of truth for dark-mode-safe branding.
 
 ## 9. Database Model And Persistence Rules
 
@@ -316,6 +320,7 @@ Agent implication:
 
 - Most data quality problems originate in worker upsert rules, not in controllers.
 - If API output is wrong but database rows are already wrong, fix the worker or backfill path rather than only patching the controller.
+- One current exception: `HistoryController` now defensively filters obviously bad “completed” rows at read time (for example future-dated `Final` games or `0-0` score rows) so the history UI is not polluted by bad data.
 
 ## 11. NBA Client Reality
 
@@ -394,7 +399,22 @@ If upstream headers change:
 - parsing may silently degrade
 - empty arrays are often returned instead of hard failures
 
-### 14.3 Season logic is duplicated
+### 14.3 History endpoint has opinionated read-time cleanup
+
+`HistoryController` now excludes games that are:
+
+- not `Final`
+- postseason
+- future-dated
+- `0-0`
+
+Practical effect:
+
+- the history UI is intentionally protected from obviously invalid completed-game rows
+- if the database contains bad “final” records, history pages may disagree with raw table contents by design
+- if someone changes these filters, they are changing product semantics, not just query optimization
+
+### 14.4 Season logic is duplicated
 
 Several places compute current season with variants of:
 
@@ -402,7 +422,7 @@ Several places compute current season with variants of:
 
 If season-boundary behavior changes, search broadly.
 
-### 14.4 SQLite tests are not PostgreSQL-perfect
+### 14.5 SQLite tests are not PostgreSQL-perfect
 
 Tests run on SQLite in-memory, production uses PostgreSQL.
 
@@ -413,7 +433,7 @@ Watch for:
 - index and uniqueness edge cases
 - provider-specific behavior
 
-### 14.5 Startup behavior is heavy
+### 14.6 Startup behavior is heavy
 
 Worker boot immediately triggers real data work, including historical backfill.
 
@@ -437,6 +457,7 @@ Current test coverage is strongest around:
 - API startup wiring
 - AutoMapper config
 - games endpoint behavior and caching
+- history endpoint behavior now has focused tests for invalid final rows and team-mode win-share semantics
 - matchup endpoint
 - players endpoint
 - error handling and proxy/CORS-shaped requests
@@ -488,6 +509,13 @@ If the task is “fix standings/team/player identity issues”:
 - `SyncBoxScoresJob`
 - `Team` / `Player` entity shape
 - any frontend fallback metadata in `src/data/teams.ts`
+
+If the task is “fix history page analytics or visuals”:
+
+- `HistoryController` is the source of truth for filtering and analytics semantics
+- `HistoryPage` passes team-color context into team-specific visuals
+- `SeasonIdentityTags` now uses a responsive grid rather than horizontal scrolling or loose flex-wrap
+- `MonthlyHeatmap` uses a neutral-gray-to-team-color ramp, not a generic blue palette
 
 ## 17. Recommended Agent Workflow
 
