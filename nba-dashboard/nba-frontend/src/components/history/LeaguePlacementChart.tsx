@@ -16,6 +16,7 @@ import {
   CardContent,
 } from "@/components/ui/card"
 import { LeaguePlacement, LeaguePlacementTeam } from "@/types/history"
+import { getTeamColorsDark } from "@/data/teams"
 
 interface LeaguePlacementChartProps {
   data: LeaguePlacement
@@ -66,10 +67,6 @@ function PlacementTooltip({
 
 export default function LeaguePlacementChart({ data, teamColor }: LeaguePlacementChartProps) {
   const chartHeight = Math.max(360, data.teams.length * 24 + 24)
-  const sameConferenceColor = teamColor.startsWith("#")
-    ? withOpacity(teamColor, 0.42)
-    : teamColor
-  const neutralColor = "rgba(148, 163, 184, 0.34)"
 
   return (
     <Card>
@@ -111,17 +108,16 @@ export default function LeaguePlacementChart({ data, teamColor }: LeaguePlacemen
             <Bar dataKey="winPct" radius={[0, 4, 4, 0]}>
               {data.teams.map((team) => {
                 const isSelected = team.teamId === data.selectedTeamId
+                const colors = getTeamColorsDark(team.teamId)
                 const fill = isSelected
-                  ? teamColor
-                  : team.conference === data.selectedConference
-                    ? sameConferenceColor
-                    : neutralColor
+                  ? colors.primary
+                  : withOpacity(colors.primary, 0.82)
 
                 return (
                   <Cell
                     key={team.teamId}
                     fill={fill}
-                    stroke={isSelected ? teamColor : "none"}
+                    stroke={isSelected ? colors.secondary : "none"}
                     strokeWidth={isSelected ? 1.5 : 0}
                   />
                 )
