@@ -257,6 +257,9 @@ Notable page behavior:
 - `HistoryPage` is analytics-heavy and depends on a single aggregated API endpoint instead of several smaller ones.
 - `HistoryPage` is also the default landing page for `/`; Today’s Games lives at `/games`.
 - `HotPage` depends on backend-computed ranking logic, not client-side calculations.
+- `HotPage` semantics are split by window:
+  - `window=5|10` compares the latest N games against earlier games from the same season and requires at least N prior games.
+  - `window=season` compares this season against last season.
 - Team-specific history visuals use `getTeamColorsDark(...)` as the source of truth for dark-mode-safe branding.
 
 ## 9. Database Model And Persistence Rules
@@ -323,6 +326,8 @@ Important jobs:
 
 - `SyncSeasonAveragesJob`
   - Refreshes player season-level averages and advanced metrics.
+  - Completed-season cursors must not be trusted when a season has zero `PlayerSeasonStats` rows; replay that season instead of skipping it.
+  - Season averages should run after historical box-score backfill on startup, because missing player/team rows cause season-average upserts to be skipped.
 
 - `SyncStandingsJob`
   - Merges `leaguestandingsv3` with `leaguedashteamstats` (`MeasureType=Advanced`) by `TEAM_ID`.

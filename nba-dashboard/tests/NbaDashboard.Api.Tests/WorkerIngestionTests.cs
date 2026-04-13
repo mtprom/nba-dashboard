@@ -243,6 +243,157 @@ public class WorkerIngestionTests
         Assert.Equal(99.1m, repaired.Pace);
     }
 
+    [Fact]
+    public async Task SyncSeasonAverages_DoesNotMarkCompletedSeasonDoneWhenRowsSkippedForMissingDependencies()
+    {
+        using var db = CreateDbContext();
+        var currentSeasonYear = DateTime.UtcNow.Month >= 10 ? DateTime.UtcNow.Year : DateTime.UtcNow.Year - 1;
+        var priorSeasonYear = currentSeasonYear - 1;
+
+        var client = new ScriptedNbaStatsClient((endpoint, parameters) =>
+        {
+            if (endpoint != "leaguedashplayerstats")
+                return null;
+
+            var season = parameters?["Season"];
+            var measureType = parameters?["MeasureType"];
+            if (season != SeasonString(priorSeasonYear))
+                return CreateEmptySeasonStatsResponse();
+
+            return measureType switch
+            {
+                "Base" => CreateTraditionalSeasonStatsResponse(),
+                "Advanced" => CreateAdvancedSeasonStatsResponse(),
+                _ => null,
+            };
+        });
+
+        var job = new SyncSeasonAveragesJob(
+            client,
+            db,
+            NullLogger<SyncSeasonAveragesJob>.Instance,
+            CreateStandingsConfig(priorSeasonYear));
+
+        await job.RunAsync();
+
+        Assert.False(await db.PlayerSeasonStats.AnyAsync());
+        Assert.False(await db.SyncStates.AnyAsync(s => s.Key == $"season_avg_{priorSeasonYear}"));
+    }
+
+    [Fact]
+    public async Task SyncSeasonAverages_ReplaysStaleCursorWhenCompletedSeasonHasNoRows()
+    {
+        using var db = CreateDbContext();
+        var currentSeasonYear = DateTime.UtcNow.Month >= 10 ? DateTime.UtcNow.Year : DateTime.UtcNow.Year - 1;
+        var priorSeasonYear = currentSeasonYear - 1;
+
+        db.Teams.Add(new Team
+        {
+            Id = 1610612738,
+            City = "Boston",
+            Name = "Celtics",
+            FullName = "Boston Celtics",
+            Abbreviation = "BOS",
+        });
+        db.Players.Add(new Player
+        {
+            Id = 1628369,
+            FirstName = "Jayson",
+            LastName = "Tatum",
+            TeamId = 1610612738,
+            IsActive = true,
+        });
+        db.SyncStates.Add(new SyncState
+        {
+            Key = $"season_avg_{priorSeasonYear}",
+            Value = "done",
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+
+        var client = new ScriptedNbaStatsClient((endpoint, parameters) =>
+        {
+            if (endpoint != "leaguedashplayerstats")
+                return null;
+
+            var season = parameters?["Season"];
+            var measureType = parameters?["MeasureType"];
+            if (season != SeasonString(priorSeasonYear))
+                return CreateEmptySeasonStatsResponse();
+
+            return measureType switch
+            {
+                "Base" => CreateTraditionalSeasonStatsResponse(),
+                "Advanced" => CreateAdvancedSeasonStatsResponse(),
+                _ => null,
+            };
+        });
+
+        var job = new SyncSeasonAveragesJob(
+            client,
+            db,
+            NullLogger<SyncSeasonAveragesJob>.Instance,
+            CreateStandingsConfig(priorSeasonYear));
+
+        await job.RunAsync();
+
+        var stat = await db.PlayerSeasonStats.SingleAsync(s => s.PlayerId == 1628369);
+        Assert.Equal(55, stat.GamesPlayed);
+        Assert.Equal(27.4m, stat.PtsAvg);
+        Assert.True(await db.SyncStates.AnyAsync(s => s.Key == $"season_avg_{priorSeasonYear}"));
+    }
+
+    [Fact]
+    public async Task SyncSeasonAverages_SucceedsAfterBoxScoreBackfillCreatesDependencies()
+    {
+        using var db = CreateDbContext();
+        var currentSeasonYear = DateTime.UtcNow.Month >= 10 ? DateTime.UtcNow.Year : DateTime.UtcNow.Year - 1;
+        var priorSeasonYear = currentSeasonYear - 1;
+        var priorSeasonGameDate = $"{priorSeasonYear}-10-24";
+
+        var client = new ScriptedNbaStatsClient((endpoint, parameters) =>
+        {
+            if (endpoint == "leaguegamefinder")
+            {
+                var season = parameters?["Season"];
+                return season == SeasonString(priorSeasonYear)
+                    ? CreateGameFinderResponse("0022201111", priorSeasonGameDate)
+                    : CreateEmptyGameFinderResponse();
+            }
+
+            return endpoint switch
+            {
+                "boxscoretraditionalv3" => CreateTraditionalResponse("0022201111"),
+                "boxscoreadvancedv3" => CreateAdvancedResponse("0022201111"),
+                "leaguedashplayerstats" => parameters?["Season"] == SeasonString(priorSeasonYear)
+                    ? parameters?["MeasureType"] switch
+                    {
+                        "Base" => CreateTraditionalSeasonStatsResponse(),
+                        "Advanced" => CreateAdvancedSeasonStatsResponse(),
+                        _ => CreateEmptySeasonStatsResponse(),
+                    }
+                    : CreateEmptySeasonStatsResponse(),
+                _ => null,
+            };
+        });
+
+        var boxScoreJob = new SyncBoxScoresJob(client, db, NullLogger<SyncBoxScoresJob>.Instance);
+        await boxScoreJob.RunForSeasonAsync(priorSeasonYear);
+
+        var seasonJob = new SyncSeasonAveragesJob(
+            client,
+            db,
+            NullLogger<SyncSeasonAveragesJob>.Instance,
+            CreateStandingsConfig(priorSeasonYear));
+
+        await seasonJob.RunAsync();
+
+        var stat = await db.PlayerSeasonStats.SingleAsync(s => s.PlayerId == 1628369);
+        Assert.Equal(priorSeasonYear, stat.Season.Year);
+        Assert.Equal(0.602m, stat.TsPct);
+        Assert.True(await db.SyncStates.AnyAsync(s => s.Key == $"season_avg_{priorSeasonYear}"));
+    }
+
     private static AppDbContext CreateDbContext()
     {
         var connection = new SqliteConnection("DataSource=:memory:");
@@ -536,6 +687,74 @@ public class WorkerIngestionTests
         };
     }
 
+    private static LeagueDashPlayerStatsResponse CreateTraditionalSeasonStatsResponse()
+    {
+        return new LeagueDashPlayerStatsResponse
+        {
+            ResultSets =
+            [
+                new PlayerStatsResultSet
+                {
+                    Name = "LeagueDashPlayerStats",
+                    Headers =
+                    [
+                        "PLAYER_ID", "TEAM_ID", "GP", "MIN", "PTS", "REB", "AST", "STL",
+                        "BLK", "TOV", "FG_PCT", "FG3_PCT", "FT_PCT"
+                    ],
+                    RowSet =
+                    [
+                        [
+                            ToJson(1628369), ToJson(1610612738), ToJson(55), ToJson(36.1m), ToJson(27.4m),
+                            ToJson(8.2m), ToJson(5.8m), ToJson(1.1m), ToJson(0.7m), ToJson(2.9m),
+                            ToJson(0.482m), ToJson(0.381m), ToJson(0.854m)
+                        ],
+                    ],
+                },
+            ],
+        };
+    }
+
+    private static LeagueDashPlayerStatsResponse CreateAdvancedSeasonStatsResponse()
+    {
+        return new LeagueDashPlayerStatsResponse
+        {
+            ResultSets =
+            [
+                new PlayerStatsResultSet
+                {
+                    Name = "LeagueDashPlayerStats",
+                    Headers =
+                    [
+                        "PLAYER_ID", "TEAM_ID", "TS_PCT", "USG_PCT", "NET_RATING", "PIE"
+                    ],
+                    RowSet =
+                    [
+                        [
+                            ToJson(1628369), ToJson(1610612738), ToJson(0.602m), ToJson(30.4m),
+                            ToJson(8.6m), ToJson(0.174m)
+                        ],
+                    ],
+                },
+            ],
+        };
+    }
+
+    private static LeagueDashPlayerStatsResponse CreateEmptySeasonStatsResponse()
+    {
+        return new LeagueDashPlayerStatsResponse
+        {
+            ResultSets =
+            [
+                new PlayerStatsResultSet
+                {
+                    Name = "LeagueDashPlayerStats",
+                    Headers = [],
+                    RowSet = [],
+                },
+            ],
+        };
+    }
+
     private static IConfiguration CreateStandingsConfig(int? backfillStartYear = null)
     {
         var effectiveStartYear = backfillStartYear
@@ -548,6 +767,9 @@ public class WorkerIngestionTests
             })
             .Build();
     }
+
+    private static string SeasonString(int year) =>
+        $"{year}-{(year + 1) % 100:D2}";
 
     private static JsonElement ToJson<T>(T value) => JsonSerializer.SerializeToElement(value);
 

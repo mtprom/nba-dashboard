@@ -49,7 +49,8 @@ export default function HotPage() {
     }
   }, [window])
 
-  const baselineLabel = window === "season" ? "last season" : "season avg"
+  const baselineLabel =
+    window === "season" ? "last season" : "earlier games this season"
 
   return (
     <div>

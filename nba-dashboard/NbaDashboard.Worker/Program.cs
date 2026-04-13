@@ -49,13 +49,13 @@ using (var scope = host.Services.CreateScope())
     var standings = scope.ServiceProvider.GetRequiredService<SyncStandingsJob>();
     await standings.RunBackfillRangeAsync();
 
-    // Run season averages backfill (2 API calls per season)
-    var seasonAvg = scope.ServiceProvider.GetRequiredService<SyncSeasonAveragesJob>();
-    await seasonAvg.RunAsync();
-
     // Run historical backfill (resumes from cursor if interrupted, can take hours)
     var backfill = scope.ServiceProvider.GetRequiredService<HistoricalBackfillJob>();
     await backfill.RunAsync();
+
+    // Run season averages after historical backfill so player/team rows already exist.
+    var seasonAvg = scope.ServiceProvider.GetRequiredService<SyncSeasonAveragesJob>();
+    await seasonAvg.RunAsync();
 
     // Schedule nightly recurring jobs
     RecurringJob.AddOrUpdate<SyncBoxScoresJob>(

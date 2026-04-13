@@ -110,98 +110,115 @@ public class HotController : ControllerBase
 
     private async Task<HotPlayersResponseDto> ComputeLastNGames(int seasonId, int n, CancellationToken ct)
     {
-        // Get all season averages for current season (baseline)
-        var seasonStats = await _db.PlayerSeasonStats
-            .Where(s => s.SeasonId == seasonId && s.GamesPlayed >= n)
-            .Include(s => s.Player).ThenInclude(p => p.Team)
-            .ToListAsync(ct);
-
-        if (seasonStats.Count == 0)
-            return new HotPlayersResponseDto();
-
-        var playerIds = seasonStats.Select(s => s.PlayerId).Distinct().ToList();
-
-        // Get the last N game IDs for each player in one query
-        // First get all games this season ordered by date
         var seasonGameIds = await _db.Games
             .Where(g => g.SeasonId == seasonId && g.Status == "Final")
             .OrderByDescending(g => g.Date)
             .Select(g => g.Id)
             .ToListAsync(ct);
 
-        // Get traditional stats for these players in season games
+        if (seasonGameIds.Count == 0)
+            return new HotPlayersResponseDto();
+
         var allTradStats = await _db.PlayerGameStats
-            .Where(s => playerIds.Contains(s.PlayerId) && seasonGameIds.Contains(s.GameId)
-                        && s.Minutes >= 2m)
+            .Where(s => seasonGameIds.Contains(s.GameId) && s.Minutes >= 2m)
+            .Include(s => s.Player).ThenInclude(p => p.Team)
             .Include(s => s.Game)
             .OrderByDescending(s => s.Game.Date)
             .ToListAsync(ct);
 
-        // Get advanced stats
+        if (allTradStats.Count == 0)
+            return new HotPlayersResponseDto();
+
         var allAdvStats = await _db.PlayerGameAdvanced
-            .Where(s => playerIds.Contains(s.PlayerId) && seasonGameIds.Contains(s.GameId))
+            .Where(s => seasonGameIds.Contains(s.GameId))
             .ToDictionaryAsync(s => (s.PlayerId, s.GameId), ct);
 
         var result = new List<HotPlayerDto>();
 
-        foreach (var baseline in seasonStats)
+        foreach (var playerGames in allTradStats.GroupBy(s => s.PlayerId))
         {
             ct.ThrowIfCancellationRequested();
 
-            var recentGames = allTradStats
-                .Where(s => s.PlayerId == baseline.PlayerId)
-                .Take(n)
-                .ToList();
-
-            if (recentGames.Count < n)
+            var orderedGames = playerGames.ToList();
+            if (orderedGames.Count < n * 2)
                 continue;
 
-            var count = (decimal)recentGames.Count;
-            var ptsAvg = recentGames.Sum(g => (decimal)g.Points) / count;
-            var rebAvg = recentGames.Sum(g => (decimal)g.Rebounds) / count;
-            var astAvg = recentGames.Sum(g => (decimal)g.Assists) / count;
+            var recentGames = orderedGames.Take(n).ToList();
+            var baselineGames = orderedGames.Skip(n).ToList();
+
+            if (baselineGames.Count < n)
+                continue;
+
+            var currentPlayer = recentGames[0].Player;
+
+            var recentCount = (decimal)recentGames.Count;
+            var baselineCount = (decimal)baselineGames.Count;
+
+            var ptsAvg = recentGames.Sum(g => (decimal)g.Points) / recentCount;
+            var rebAvg = recentGames.Sum(g => (decimal)g.Rebounds) / recentCount;
+            var astAvg = recentGames.Sum(g => (decimal)g.Assists) / recentCount;
             var fgPct = recentGames.Average(g => g.FieldGoalPct);
 
-            // Advanced stats averages
+            var baselinePtsAvg = baselineGames.Sum(g => (decimal)g.Points) / baselineCount;
+            var baselineRebAvg = baselineGames.Sum(g => (decimal)g.Rebounds) / baselineCount;
+            var baselineAstAvg = baselineGames.Sum(g => (decimal)g.Assists) / baselineCount;
+            var baselineFgPct = baselineGames.Average(g => g.FieldGoalPct);
+
             decimal tsPct = 0m, netRating = 0m;
-            int advCount = 0;
-            foreach (var g in recentGames)
+            int recentAdvCount = 0;
+            foreach (var game in recentGames)
             {
-                if (allAdvStats.TryGetValue((g.PlayerId, g.GameId), out var adv))
+                if (allAdvStats.TryGetValue((game.PlayerId, game.GameId), out var adv))
                 {
                     tsPct += adv.TsPct;
                     netRating += adv.NetRating;
-                    advCount++;
+                    recentAdvCount++;
                 }
             }
-            if (advCount > 0)
+            if (recentAdvCount > 0)
             {
-                tsPct /= advCount;
-                netRating /= advCount;
+                tsPct /= recentAdvCount;
+                netRating /= recentAdvCount;
             }
 
-            var ptsDelta = ptsAvg - baseline.PtsAvg;
-            var rebDelta = rebAvg - baseline.RebAvg;
-            var astDelta = astAvg - baseline.AstAvg;
-            var fgPctDelta = fgPct - baseline.FgPct;
-            var tsPctDelta = tsPct - baseline.TsPct;
-            var netRatingDelta = netRating - baseline.NetRating;
+            decimal baselineTsPct = 0m, baselineNetRating = 0m;
+            int baselineAdvCount = 0;
+            foreach (var game in baselineGames)
+            {
+                if (allAdvStats.TryGetValue((game.PlayerId, game.GameId), out var adv))
+                {
+                    baselineTsPct += adv.TsPct;
+                    baselineNetRating += adv.NetRating;
+                    baselineAdvCount++;
+                }
+            }
+            if (baselineAdvCount > 0)
+            {
+                baselineTsPct /= baselineAdvCount;
+                baselineNetRating /= baselineAdvCount;
+            }
 
-            // Raw swing weighted — magnitude matters directly
+            var ptsDelta = ptsAvg - baselinePtsAvg;
+            var rebDelta = rebAvg - baselineRebAvg;
+            var astDelta = astAvg - baselineAstAvg;
+            var fgPctDelta = fgPct - baselineFgPct;
+            var tsPctDelta = tsPct - baselineTsPct;
+            var netRatingDelta = netRating - baselineNetRating;
+
             var heatScore =
-                ptsDelta * 0.30m +                // 1 point delta = 0.30 heat
-                (tsPctDelta * 100m) * 0.05m +     // 1% TS delta = 0.05 heat
-                astDelta * 0.10m +                 // 1 assist delta = 0.10 heat
-                netRatingDelta * 0.03m +           // 1 net rtg delta = 0.03 heat
-                rebDelta * 0.08m;                  // 1 rebound delta = 0.08 heat
+                ptsDelta * 0.30m +
+                (tsPctDelta * 100m) * 0.05m +
+                astDelta * 0.10m +
+                netRatingDelta * 0.03m +
+                rebDelta * 0.08m;
 
             result.Add(new HotPlayerDto
             {
-                PlayerId = baseline.PlayerId,
-                PlayerName = $"{baseline.Player.FirstName} {baseline.Player.LastName}",
-                Position = baseline.Player.Position,
-                JerseyNumber = baseline.Player.JerseyNumber,
-                Team = _mapper.Map<TeamDto>(baseline.Player.Team),
+                PlayerId = currentPlayer.Id,
+                PlayerName = $"{currentPlayer.FirstName} {currentPlayer.LastName}",
+                Position = currentPlayer.Position,
+                JerseyNumber = currentPlayer.JerseyNumber,
+                Team = _mapper.Map<TeamDto>(currentPlayer.Team),
                 HeatScore = Math.Round(heatScore, 3),
                 GamesPlayed = recentGames.Count,
                 PtsAvg = Math.Round(ptsAvg, 1),
@@ -210,12 +227,12 @@ public class HotController : ControllerBase
                 FgPct = Math.Round(fgPct, 3),
                 TsPct = Math.Round(tsPct, 3),
                 NetRating = Math.Round(netRating, 1),
-                BaselinePtsAvg = Math.Round(baseline.PtsAvg, 1),
-                BaselineRebAvg = Math.Round(baseline.RebAvg, 1),
-                BaselineAstAvg = Math.Round(baseline.AstAvg, 1),
-                BaselineFgPct = Math.Round(baseline.FgPct, 3),
-                BaselineTsPct = Math.Round(baseline.TsPct, 3),
-                BaselineNetRating = Math.Round(baseline.NetRating, 1),
+                BaselinePtsAvg = Math.Round(baselinePtsAvg, 1),
+                BaselineRebAvg = Math.Round(baselineRebAvg, 1),
+                BaselineAstAvg = Math.Round(baselineAstAvg, 1),
+                BaselineFgPct = Math.Round(baselineFgPct, 3),
+                BaselineTsPct = Math.Round(baselineTsPct, 3),
+                BaselineNetRating = Math.Round(baselineNetRating, 1),
                 PtsDelta = Math.Round(ptsDelta, 1),
                 RebDelta = Math.Round(rebDelta, 1),
                 AstDelta = Math.Round(astDelta, 1),
@@ -314,65 +331,44 @@ public class HotController : ControllerBase
 
     private async Task<HotTeamsResponseDto> ComputeTeamLastNGames(int seasonId, int n, CancellationToken ct)
     {
-        var teams = await _db.Teams.Where(t => !string.IsNullOrEmpty(t.Conference)).ToListAsync(ct);
-        if (teams.Count == 0)
-            return new HotTeamsResponseDto();
-
-        // Get latest standings for baseline
-        var latestDate = await _db.StandingsSnapshots
-            .Where(s => s.SeasonId == seasonId)
-            .MaxAsync(s => (DateTime?)s.SnapshotDate, ct);
-
-        var standings = latestDate != null
-            ? await _db.StandingsSnapshots
-                .Where(s => s.SeasonId == seasonId && s.SnapshotDate == latestDate.Value)
-                .ToDictionaryAsync(s => s.TeamId, ct)
-            : new Dictionary<int, NbaDashboard.Core.Entities.StandingsSnapshot>();
-
-        // Get all final games this season
         var allGames = await _db.Games
             .Where(g => g.SeasonId == seasonId && g.Status == "Final")
             .OrderByDescending(g => g.Date)
             .ToListAsync(ct);
 
+        if (allGames.Count == 0)
+            return new HotTeamsResponseDto();
+
+        var teamIds = allGames
+            .SelectMany(g => new[] { g.HomeTeamId, g.VisitorTeamId })
+            .Distinct()
+            .ToList();
+
+        var teams = await _db.Teams
+            .Where(t => teamIds.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id, ct);
+
         var result = new List<HotTeamDto>();
 
-        foreach (var team in teams)
+        foreach (var (teamId, team) in teams)
         {
             var teamGames = allGames
-                .Where(g => g.HomeTeamId == team.Id || g.VisitorTeamId == team.Id)
-                .Take(n)
+                .Where(g => g.HomeTeamId == teamId || g.VisitorTeamId == teamId)
                 .ToList();
 
-            if (teamGames.Count < n)
+            if (teamGames.Count < n * 2)
                 continue;
 
-            int wins = 0, losses = 0;
-            decimal totalScored = 0, totalAllowed = 0;
+            var recentGames = teamGames.Take(n).ToList();
+            var baselineGames = teamGames.Skip(n).ToList();
+            if (baselineGames.Count < n)
+                continue;
 
-            foreach (var g in teamGames)
-            {
-                bool isHome = g.HomeTeamId == team.Id;
-                int scored = isHome ? g.HomeScore : g.VisitorScore;
-                int allowed = isHome ? g.VisitorScore : g.HomeScore;
-                totalScored += scored;
-                totalAllowed += allowed;
+            var (wins, losses, windowWinPct, windowPtsScored, windowPtsAllowed, windowNetRating) =
+                SummarizeTeamWindow(teamId, recentGames);
 
-                if (scored > allowed) wins++;
-                else losses++;
-            }
-
-            var windowWinPct = (decimal)wins / teamGames.Count;
-            var windowPtsScored = totalScored / teamGames.Count;
-            var windowPtsAllowed = totalAllowed / teamGames.Count;
-            var windowNetRating = windowPtsScored - windowPtsAllowed;
-
-            // Baseline from standings
-            standings.TryGetValue(team.Id, out var standing);
-            var baselineWinPct = standing?.WinPct ?? 0m;
-            var baselineOffRating = standing?.OffRating ?? 0m;
-            var baselineDefRating = standing?.DefRating ?? 0m;
-            var baselineNetRating = standing?.NetRating ?? 0m;
+            var (_, _, baselineWinPct, baselineOffRating, baselineDefRating, baselineNetRating) =
+                SummarizeTeamWindow(teamId, baselineGames);
 
             var winPctDelta = windowWinPct - baselineWinPct;
             var scoringDelta = windowPtsScored - baselineOffRating;
@@ -412,6 +408,35 @@ public class HotController : ControllerBase
             Hot = ordered.Take(mid).ToList(),
             Cold = ordered.Skip(mid).Reverse().ToList(),
         };
+    }
+
+    private static (int Wins, int Losses, decimal WinPct, decimal PtsScored, decimal PtsAllowed, decimal NetRating)
+        SummarizeTeamWindow(int teamId, List<NbaDashboard.Core.Entities.Game> games)
+    {
+        int wins = 0;
+        int losses = 0;
+        decimal totalScored = 0m;
+        decimal totalAllowed = 0m;
+
+        foreach (var game in games)
+        {
+            bool isHome = game.HomeTeamId == teamId;
+            int scored = isHome ? game.HomeScore : game.VisitorScore;
+            int allowed = isHome ? game.VisitorScore : game.HomeScore;
+            totalScored += scored;
+            totalAllowed += allowed;
+
+            if (scored > allowed)
+                wins++;
+            else
+                losses++;
+        }
+
+        var count = games.Count;
+        var winPct = count > 0 ? (decimal)wins / count : 0m;
+        var ptsScored = count > 0 ? totalScored / count : 0m;
+        var ptsAllowed = count > 0 ? totalAllowed / count : 0m;
+        return (wins, losses, winPct, ptsScored, ptsAllowed, ptsScored - ptsAllowed);
     }
 
     // ─── Hot Teams: This Season vs Last Season ───

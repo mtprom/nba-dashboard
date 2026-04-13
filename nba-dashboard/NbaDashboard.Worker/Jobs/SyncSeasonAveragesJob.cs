@@ -74,25 +74,42 @@ public class SyncSeasonAveragesJob
             ct.ThrowIfCancellationRequested();
 
             var cursorKey = $"season_avg_{year}";
-            if (await _db.SyncStates.AnyAsync(s => s.Key == cursorKey, ct))
+            var isCompletedSeason = year < currentSeasonYear;
+            var hasCursor = await _db.SyncStates.AnyAsync(s => s.Key == cursorKey, ct);
+            var shouldReplayDespiteCursor = isCompletedSeason
+                && hasCursor
+                && !await SeasonHasAnyStatsAsync(year, ct);
+
+            if (hasCursor && !shouldReplayDespiteCursor)
             {
                 _logger.LogInformation("Season averages for {Season} already synced, skipping",
                     SeasonString(year));
                 continue;
             }
 
-            await SyncSeasonAsync(year, ct);
-
-            // Mark past seasons complete (not the current one — stats still updating)
-            if (year < currentSeasonYear)
+            if (shouldReplayDespiteCursor)
             {
-                _db.SyncStates.Add(new SyncState
+                _logger.LogWarning(
+                    "Season averages cursor for {Season} exists but no PlayerSeasonStats rows were found; replaying season sync",
+                    SeasonString(year));
+            }
+
+            var result = await SyncSeasonAsync(year, ct);
+
+            if (isCompletedSeason)
+            {
+                if (result.SyncedRows > 0 && result.SkippedRows == 0)
                 {
-                    Key       = cursorKey,
-                    Value     = "done",
-                    UpdatedAt = DateTime.UtcNow,
-                });
-                await _db.SaveChangesAsync(ct);
+                    UpsertSyncState(cursorKey, "done");
+                    await _db.SaveChangesAsync(ct);
+                }
+                else
+                {
+                    await RemoveSyncStateAsync(cursorKey, ct);
+                    _logger.LogWarning(
+                        "Season averages for {Season} remain incomplete: totalRows={TotalRows} synced={SyncedRows} skippedMissingFk={SkippedRows}",
+                        SeasonString(year), result.TotalRows, result.SyncedRows, result.SkippedRows);
+                }
             }
         }
 
@@ -109,7 +126,7 @@ public class SyncSeasonAveragesJob
         await SyncSeasonAsync(currentSeasonYear, ct);
     }
 
-    private async Task SyncSeasonAsync(int year, CancellationToken ct)
+    private async Task<SeasonAverageSyncResult> SyncSeasonAsync(int year, CancellationToken ct)
     {
         var seasonStr = SeasonString(year);
         _logger.LogInformation("Syncing season averages for {Season}", seasonStr);
@@ -137,7 +154,7 @@ public class SyncSeasonAveragesJob
         if (tradSet == null || tradSet.RowSet.Count == 0)
         {
             _logger.LogWarning("No traditional season stats returned for {Season}", seasonStr);
-            return;
+            return new SeasonAverageSyncResult(0, 0, 0);
         }
 
         var tIdx = HeaderIndex(tradSet.Headers);
@@ -210,6 +227,7 @@ public class SyncSeasonAveragesJob
 
         _logger.LogInformation("Season averages for {Season}: {Synced}/{Total} synced",
             seasonStr, synced, tradDict.Count);
+        return new SeasonAverageSyncResult(tradDict.Count, synced, skipped.Count);
     }
 
     /// <summary>
@@ -321,4 +339,41 @@ public class SyncSeasonAveragesJob
 
     private static string SeasonString(int year) =>
         $"{year}-{(year + 1) % 100:D2}";
+
+    private async Task<bool> SeasonHasAnyStatsAsync(int year, CancellationToken ct)
+    {
+        return await _db.PlayerSeasonStats
+            .AnyAsync(s => s.Season.Year == year, ct);
+    }
+
+    private void UpsertSyncState(string key, string value)
+    {
+        var existing = _db.SyncStates.FirstOrDefault(s => s.Key == key);
+        if (existing == null)
+        {
+            _db.SyncStates.Add(new SyncState
+            {
+                Key = key,
+                Value = value,
+                UpdatedAt = DateTime.UtcNow,
+            });
+        }
+        else
+        {
+            existing.Value = value;
+            existing.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
+    private async Task RemoveSyncStateAsync(string key, CancellationToken ct)
+    {
+        var existing = await _db.SyncStates.FirstOrDefaultAsync(s => s.Key == key, ct);
+        if (existing != null)
+        {
+            _db.SyncStates.Remove(existing);
+            await _db.SaveChangesAsync(ct);
+        }
+    }
+
+    private readonly record struct SeasonAverageSyncResult(int TotalRows, int SyncedRows, int SkippedRows);
 }
