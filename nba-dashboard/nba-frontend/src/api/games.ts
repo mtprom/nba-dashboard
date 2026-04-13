@@ -9,15 +9,11 @@ export async function getUpcomingGames(): Promise<UpcomingGame[]> {
 export async function getMatchupHistory(
   teamId: number,
   opponentId: number
-): Promise<MatchupHistory | null> {
-  try {
-    const { data } = await apiClient.get<MatchupHistory>(
-      `/api/teams/${teamId}/matchup/${opponentId}`
-    )
-    return data
-  } catch {
-    return null
-  }
+): Promise<MatchupHistory> {
+  const { data } = await apiClient.get<MatchupHistory>(
+    `/api/teams/${teamId}/matchup/${opponentId}`
+  )
+  return data
 }
 
 export async function getSeasonAverages(

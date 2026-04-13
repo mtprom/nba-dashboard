@@ -6,6 +6,7 @@ import type { MatchupHistory, MatchupGame, PlayerSeasonAvg, OutperformingPlayer 
 interface PlayersToWatchProps {
   matchup: MatchupHistory
   seasonAverages: Record<number, PlayerSeasonAvg>
+  seasonAveragesError: boolean
 }
 
 function getCurrentSeasonYear(): number {
@@ -13,27 +14,46 @@ function getCurrentSeasonYear(): number {
   return now.getMonth() >= 9 ? now.getFullYear() : now.getFullYear() - 1
 }
 
-function getLastSeasonGame(matchup: MatchupHistory): MatchupGame | null {
+function getRelevantMatchupGame(matchup: MatchupHistory): {
+  game: MatchupGame | null
+  usesFallback: boolean
+} {
   const seasonYear = getCurrentSeasonYear()
   const seasonStart = `${seasonYear}-10-01`
-  // games are ordered newest-first from the API
-  return matchup.games.find((mg) => mg.game.date >= seasonStart) ?? null
+  const currentSeasonGame = matchup.games.find((mg) => mg.game.date >= seasonStart)
+
+  if (currentSeasonGame) {
+    return { game: currentSeasonGame, usesFallback: false }
+  }
+
+  return { game: matchup.games[0] ?? null, usesFallback: matchup.games.length > 0 }
+}
+
+function formatGameDate(gameDate: string): string {
+  return new Date(gameDate).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  })
 }
 
 function computeOutperformers(
   game: MatchupGame,
   seasonAverages: Record<number, PlayerSeasonAvg>
-): OutperformingPlayer[] {
+): { comparablePlayers: number; outperformers: OutperformingPlayer[] } {
   const allStats = [
     ...game.homePlayerStats.map((ps) => ({ ps, teamId: game.homeTeam.id })),
     ...game.visitorPlayerStats.map((ps) => ({ ps, teamId: game.visitorTeam.id })),
   ]
 
   const outperformers: OutperformingPlayer[] = []
+  let comparablePlayers = 0
 
   for (const { ps, teamId } of allStats) {
     const sa = seasonAverages[ps.playerId]
     if (!sa) continue
+    comparablePlayers += 1
 
     const vsAvg = {
       ptsAvg: ps.points,
@@ -73,40 +93,86 @@ function computeOutperformers(
     }
   }
 
-  return outperformers.sort((a, b) => b.delta.pts - a.delta.pts)
+  return {
+    comparablePlayers,
+    outperformers: outperformers.sort((a, b) => b.delta.pts - a.delta.pts),
+  }
 }
 
-export default function PlayersToWatch({ matchup, seasonAverages }: PlayersToWatchProps) {
-  const lastSeasonGame = useMemo(() => getLastSeasonGame(matchup), [matchup])
+function FallbackNote({ gameDate }: { gameDate: string }) {
+  return (
+    <p className="mb-4 text-sm text-muted-foreground">
+      Using the most recent head-to-head from {formatGameDate(gameDate)} because these teams have
+      not met this season yet.
+    </p>
+  )
+}
 
-  const outperformers = useMemo(
-    () => (lastSeasonGame ? computeOutperformers(lastSeasonGame, seasonAverages) : []),
-    [lastSeasonGame, seasonAverages]
+export default function PlayersToWatch({
+  matchup,
+  seasonAverages,
+  seasonAveragesError,
+}: PlayersToWatchProps) {
+  const selectedMatchup = useMemo(() => getRelevantMatchupGame(matchup), [matchup])
+
+  const comparison = useMemo(
+    () =>
+      selectedMatchup.game
+        ? computeOutperformers(selectedMatchup.game, seasonAverages)
+        : { comparablePlayers: 0, outperformers: [] },
+    [selectedMatchup, seasonAverages]
   )
 
-  if (!lastSeasonGame) {
+  if (matchup.games.length === 0) {
     return (
       <div className="py-8 text-center text-sm text-muted-foreground">
-        No matchup this season.
+        No matchup history is available for these teams yet.
       </div>
     )
   }
 
-  if (outperformers.length === 0) {
+  if (seasonAveragesError) {
     return (
       <div className="py-8 text-center text-sm text-muted-foreground">
-        No standouts last matchup.
+        Current season averages are unavailable right now, so players to watch cannot be computed.
+      </div>
+    )
+  }
+
+  if (!selectedMatchup.game) {
+    return (
+      <div className="py-8 text-center text-sm text-muted-foreground">
+        No usable matchup data is available for players to watch.
+      </div>
+    )
+  }
+
+  if (comparison.comparablePlayers === 0) {
+    return (
+      <div className="py-8 text-center text-sm text-muted-foreground">
+        {selectedMatchup.usesFallback && <FallbackNote gameDate={selectedMatchup.game.game.date} />}
+        Current season averages are not available for players from the latest matchup.
+      </div>
+    )
+  }
+
+  if (comparison.outperformers.length === 0) {
+    return (
+      <div className="py-8 text-center text-sm text-muted-foreground">
+        {selectedMatchup.usesFallback && <FallbackNote gameDate={selectedMatchup.game.game.date} />}
+        No standouts in the latest matchup with available season averages.
       </div>
     )
   }
 
   return (
     <div>
+      {selectedMatchup.usesFallback && <FallbackNote gameDate={selectedMatchup.game.game.date} />}
       <p className="mb-4 text-sm text-muted-foreground">
         Players who significantly outperformed their season averages in the last matchup.
       </p>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {outperformers.map((player) => (
+        {comparison.outperformers.map((player) => (
           <PlayerOutperformCard
             key={player.playerId}
             player={player}

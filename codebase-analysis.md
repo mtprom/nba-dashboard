@@ -1,6 +1,6 @@
 # NBA Dashboard Codebase Analysis
 
-Updated: 2026-04-08 (includes changes through today)
+Updated: 2026-04-13 (includes changes through today)
 
 Purpose: this is an operational reference for agent-assisted coding in this repository. It is written for Codex, Claude Code, and humans who need a fast, accurate model of how the system is assembled, where behavior lives, and how to make changes safely.
 
@@ -254,6 +254,8 @@ Practical frontend architecture:
 Notable page behavior:
 
 - `GamePreviewPage` loads upcoming games, then bulk-loads season averages for all teams on the slate, and lazily loads matchup history when a game is selected.
+- Header nav order is `History`, `Today's Games`, `Hot`, `Standings`; `/` still highlights `History`.
+- `PlayersToWatch` prefers the latest current-season head-to-head, falls back to the most recent older head-to-head when needed, and shows explicit empty/error states when season-average coverage is unavailable.
 - `HistoryPage` is analytics-heavy and depends on a single aggregated API endpoint instead of several smaller ones.
 - `HistoryPage` is also the default landing page for `/`; Today’s Games lives at `/games`.
 - `HotPage` depends on backend-computed ranking logic, not client-side calculations.

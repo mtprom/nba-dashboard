@@ -12,7 +12,9 @@ export default function GamePreviewPage() {
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
   const [matchup, setMatchup] = useState<MatchupHistory | null>(null)
   const [seasonAverages, setSeasonAverages] = useState<Record<number, PlayerSeasonAvg>>({})
+  const [seasonAveragesError, setSeasonAveragesError] = useState(false)
   const [matchupLoading, setMatchupLoading] = useState(false)
+  const [matchupError, setMatchupError] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -29,8 +31,11 @@ export default function GamePreviewPage() {
           const averages =
             teamIds.length > 0 ? await getSeasonAverages(teamIds) : {}
           setSeasonAverages(averages)
+          setSeasonAveragesError(false)
         } catch {
           console.warn("Failed to load season averages")
+          setSeasonAverages({})
+          setSeasonAveragesError(true)
         }
       } catch (err) {
         console.error("Failed to load games", err)
@@ -44,17 +49,47 @@ export default function GamePreviewPage() {
   useEffect(() => {
     if (!selectedGameId) {
       setMatchup(null)
+      setMatchupError(null)
       return
     }
 
     const game = games.find((g) => g.game.id === selectedGameId)
-    if (!game) return
+    if (!game) {
+      setMatchup(null)
+      setMatchupError("Could not find that game.")
+      return
+    }
 
-    setMatchupLoading(true)
-    getMatchupHistory(game.game.homeTeamId, game.game.visitorTeamId).then((data) => {
-      setMatchup(data)
-      setMatchupLoading(false)
-    })
+    let cancelled = false
+
+    async function loadMatchup() {
+      setMatchup(null)
+      setMatchupError(null)
+      setMatchupLoading(true)
+
+      try {
+        const data = await getMatchupHistory(game.game.homeTeamId, game.game.visitorTeamId)
+        if (!cancelled) {
+          setMatchup(data)
+        }
+      } catch (err) {
+        console.error("Failed to load matchup history", err)
+        if (!cancelled) {
+          setMatchup(null)
+          setMatchupError("Failed to load matchup history for this game.")
+        }
+      } finally {
+        if (!cancelled) {
+          setMatchupLoading(false)
+        }
+      }
+    }
+
+    loadMatchup()
+
+    return () => {
+      cancelled = true
+    }
   }, [selectedGameId, games])
 
   const handleSelectGame = (gameId: string) => {
@@ -85,8 +120,18 @@ export default function GamePreviewPage() {
           </div>
         )}
 
+        {matchupError && !matchupLoading && (
+          <div className="mt-6 rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+            {matchupError}
+          </div>
+        )}
+
         {matchup && !matchupLoading && (
-          <MatchupPanel matchup={matchup} seasonAverages={seasonAverages} />
+          <MatchupPanel
+            matchup={matchup}
+            seasonAverages={seasonAverages}
+            seasonAveragesError={seasonAveragesError}
+          />
         )}
       </PageContainer>
     </div>

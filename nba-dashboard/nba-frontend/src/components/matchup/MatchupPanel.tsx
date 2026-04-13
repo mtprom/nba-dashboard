@@ -9,9 +9,14 @@ import type { MatchupHistory, PlayerSeasonAvg } from "@/types"
 interface MatchupPanelProps {
   matchup: MatchupHistory
   seasonAverages: Record<number, PlayerSeasonAvg>
+  seasonAveragesError: boolean
 }
 
-export default function MatchupPanel({ matchup, seasonAverages }: MatchupPanelProps) {
+export default function MatchupPanel({
+  matchup,
+  seasonAverages,
+  seasonAveragesError,
+}: MatchupPanelProps) {
   return (
     <Card className="mt-6">
       <div className="p-6">
@@ -29,7 +34,11 @@ export default function MatchupPanel({ matchup, seasonAverages }: MatchupPanelPr
           </TabsContent>
 
           <TabsContent value="players">
-            <PlayersToWatch matchup={matchup} seasonAverages={seasonAverages} />
+            <PlayersToWatch
+              matchup={matchup}
+              seasonAverages={seasonAverages}
+              seasonAveragesError={seasonAveragesError}
+            />
           </TabsContent>
         </Tabs>
       </div>

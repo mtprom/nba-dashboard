@@ -5,10 +5,10 @@ export default function Header() {
   const isHistoryRoute = location.pathname === "/" || location.pathname === "/history"
 
   const navItems = [
-    { label: "Games", path: "/games" },
-    { label: "Standings", path: "/standings" },
-    { label: "Hot", path: "/hot" },
     { label: "History", path: "/history" },
+    { label: "Today's Games", path: "/games" },
+    { label: "Hot", path: "/hot" },
+    { label: "Standings", path: "/standings" },
   ]
 
   return (
