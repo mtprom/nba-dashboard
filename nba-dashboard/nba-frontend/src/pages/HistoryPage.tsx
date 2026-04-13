@@ -7,6 +7,7 @@ import SeasonBarChart from "@/components/history/SeasonBarChart"
 import GameLogPanel from "@/components/history/GameLogPanel"
 import MonthlyHeatmap from "@/components/history/MonthlyHeatmap"
 import TeamTrajectoryChart from "@/components/history/TeamTrajectoryChart"
+import LeaguePlacementChart from "@/components/history/LeaguePlacementChart"
 import HomeAwayWinRateSplit from "@/components/history/HomeAwayWinRateSplit"
 import SeasonIdentityTags from "@/components/history/SeasonIdentityTags"
 import BestWorstGamesPanel from "@/components/history/BestWorstGamesPanel"
@@ -57,6 +58,7 @@ export default function HistoryPage() {
 
   const isTeamSelected = filter.teamId !== null
   const isFullRange = filter.fromSeason === MIN_SEASON && filter.toSeason === MAX_SEASON
+  const isSingleSeasonTeamView = isTeamSelected && filter.fromSeason === filter.toSeason
   const teamColor = isTeamSelected
     ? getTeamColorsDark(filter.teamId!).primary
     : "hsl(var(--primary))"
@@ -115,7 +117,11 @@ export default function HistoryPage() {
             {/* TEAM mode */}
             {isTeamSelected && (
               <>
-                <TeamTrajectoryChart data={data.seasonStats} teamColor={teamColor} />
+                {isSingleSeasonTeamView && data.leaguePlacement ? (
+                  <LeaguePlacementChart data={data.leaguePlacement} teamColor={teamColor} />
+                ) : (
+                  <TeamTrajectoryChart data={data.seasonStats} teamColor={teamColor} />
+                )}
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                   <HomeAwayWinRateSplit data={data.seasonStats} teamColor={teamColor} />
                   {data.bestWorstGames && (

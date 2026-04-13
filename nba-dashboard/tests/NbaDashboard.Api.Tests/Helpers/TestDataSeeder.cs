@@ -6,7 +6,9 @@ namespace NbaDashboard.Api.Tests.Helpers;
 public static class TestDataSeeder
 {
     public const int CelticsId = 1610612738;
+    public const int BullsId = 1610612741;
     public const int LakersId = 1610612747;
+    public const int SpursId = 1610612759;
     public const int ThunderId = 1610612760;
 
     public static void Seed(AppDbContext db)
@@ -125,13 +127,50 @@ public static class TestDataSeeder
         int pts, int reb, int ast, int stl, int blk, int to, decimal min,
         decimal fgPct, decimal threePct, decimal ftPct, int plusMinus)
     {
+        var fgAttempts = Math.Max(8, pts / 2 + 4);
+        var fgMade = Math.Min(fgAttempts, (int)Math.Round(fgAttempts * fgPct, MidpointRounding.AwayFromZero));
+        var threeAttempts = Math.Max(2, fgAttempts / 3);
+        var threeMade = Math.Min(threeAttempts, (int)Math.Round(threeAttempts * threePct, MidpointRounding.AwayFromZero));
+        var freeThrowAttempts = Math.Max(2, Math.Max(0, pts - (fgMade * 2 + threeMade)));
+        var freeThrowsMade = Math.Min(freeThrowAttempts, (int)Math.Round(freeThrowAttempts * ftPct, MidpointRounding.AwayFromZero));
+
         db.PlayerGameStats.Add(new PlayerGameStats
         {
             GameId = gameId, PlayerId = player.Id, TeamId = teamId,
+            StartPosition = player.Position,
             Points = pts, Rebounds = reb, Assists = ast,
             Steals = stl, Blocks = blk, Turnovers = to,
+            PersonalFouls = 2,
             Minutes = min, FieldGoalPct = fgPct, ThreePointPct = threePct,
             FreeThrowPct = ftPct, PlusMinus = plusMinus,
+            FieldGoalsMade = fgMade,
+            FieldGoalsAttempted = fgAttempts,
+            ThreePointersMade = threeMade,
+            ThreePointersAttempted = threeAttempts,
+            FreeThrowsMade = freeThrowsMade,
+            FreeThrowsAttempted = freeThrowAttempts,
+            OffensiveRebounds = Math.Max(0, reb / 3),
+            DefensiveRebounds = Math.Max(0, reb - Math.Max(0, reb / 3)),
+        });
+
+        db.PlayerGameAdvanced.Add(new PlayerGameAdvanced
+        {
+            GameId = gameId,
+            PlayerId = player.Id,
+            TeamId = teamId,
+            Minutes = min,
+            OffRating = 112m + plusMinus,
+            DefRating = 108m - (plusMinus / 2m),
+            NetRating = plusMinus,
+            AstPct = ast / 10m,
+            OrebPct = reb / 40m,
+            DrebPct = reb / 18m,
+            RebPct = reb / 12m,
+            EfgPct = fgPct + 0.03m,
+            TsPct = Math.Min(0.75m, fgPct + 0.08m),
+            UsgPct = 0.20m + (pts / 100m),
+            Pace = 98m + (min / 60m),
+            Pie = 0.08m + (pts / 300m),
         });
     }
 }

@@ -3,6 +3,7 @@ import GamePreviewPage from "@/pages/GamePreviewPage"
 import StandingsPage from "@/pages/StandingsPage"
 import HotPage from "@/pages/HotPage"
 import HistoryPage from "@/pages/HistoryPage"
+import PlayerHistoryPage from "@/pages/PlayerHistoryPage"
 
 export default function App() {
   return (
@@ -10,6 +11,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HistoryPage />} />
         <Route path="/games" element={<GamePreviewPage />} />
+        <Route path="/player-history" element={<PlayerHistoryPage />} />
         <Route path="/standings" element={<StandingsPage />} />
         <Route path="/hot" element={<HotPage />} />
         <Route path="/history" element={<HistoryPage />} />

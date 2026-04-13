@@ -218,6 +218,8 @@ Implemented endpoints:
 - `GET /api/games/upcoming`
 - `GET /api/teams/{teamId}/matchup/{opponentId}`
 - `GET /api/players/season-averages?teamIds=...`
+- `GET /api/players/search?query=...`
+- `GET /api/players/history?playerId=&fromSeason=&toSeason=`
 - `GET /api/standings?season=...`
 - `GET /api/hot/players?window=5|10|season`
 - `GET /api/hot/teams?window=5|10|season`
@@ -235,6 +237,7 @@ Routes in [App.tsx](/Users/macprom/Desktop/nba/nba-dashboard/nba-frontend/src/Ap
 
 - `/` -> `HistoryPage`
 - `/games` -> `GamePreviewPage`
+- `/player-history` -> `PlayerHistoryPage`
 - `/standings` -> `StandingsPage`
 - `/hot` -> `HotPage`
 - `/history` -> `HistoryPage`
@@ -243,6 +246,7 @@ Frontend fetch layer:
 
 - [client.ts](/Users/macprom/Desktop/nba/nba-dashboard/nba-frontend/src/api/client.ts): axios base URL from `VITE_API_URL`
 - `games.ts`, `standings.ts`, `hot.ts`, `history.ts`: thin wrappers around API calls
+- `player-history.ts`: player search and aggregated player-history fetches
 
 Practical frontend architecture:
 
@@ -254,10 +258,13 @@ Practical frontend architecture:
 Notable page behavior:
 
 - `GamePreviewPage` loads upcoming games, then bulk-loads season averages for all teams on the slate, and lazily loads matchup history when a game is selected.
-- Header nav order is `History`, `Today's Games`, `Hot`, `Standings`; `/` still highlights `History`.
+- Header nav order is `History`, `Player History`, `Today's Games`, `Hot`, `Standings`; `/` still highlights `History`.
 - `PlayersToWatch` prefers the latest current-season head-to-head, falls back to the most recent older head-to-head when needed, and shows explicit empty/error states when season-average coverage is unavailable.
 - `HistoryPage` is analytics-heavy and depends on a single aggregated API endpoint instead of several smaller ones.
 - `HistoryPage` is also the default landing page for `/`; Today’s Games lives at `/games`.
+- In single-team single-season mode, `HistoryPage` swaps the hero trajectory line chart for a `/api/history` league-placement bar chart; that payload also carries conference-rank context derived from the same filtered game set.
+- `PlayerHistoryPage` mirrors the `HistoryPage` architecture: one aggregated backend payload, page-owned fetch orchestration, Recharts/card/table presentation, and a lightweight DB-backed player picker via `/api/players/search`.
+- `PlayerHistoryPage` uses `/api/players/history` as the source of truth for player header info, available seasons, game log rows, season aggregates, highlights, and split summaries so metric switching and game/season view toggles happen client-side without refetching.
 - `HotPage` depends on backend-computed ranking logic, not client-side calculations.
 - `HotPage` semantics are split by window:
   - `window=5|10` compares the latest N games against earlier games from the same season and requires at least N prior games.

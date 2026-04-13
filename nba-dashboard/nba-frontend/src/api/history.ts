@@ -6,6 +6,7 @@ import type {
   HistoryGame,
   SeasonStatDatum,
   BestWorstGames,
+  LeaguePlacement,
 } from "@/types/history"
 
 export interface HistoryResponse {
@@ -16,6 +17,7 @@ export interface HistoryResponse {
   blowoutGames: HistoryGame[]
   seasonStats: SeasonStatDatum[]
   bestWorstGames: BestWorstGames | null
+  leaguePlacement: LeaguePlacement | null
 }
 
 export async function getHistory(

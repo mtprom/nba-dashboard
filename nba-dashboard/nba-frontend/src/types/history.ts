@@ -54,6 +54,29 @@ export interface BestWorstGames {
   lowestScoringGame: HistoryGame | null
 }
 
+export interface LeaguePlacementTeam {
+  teamId: number
+  teamName: string
+  abbreviation: string
+  conference: string
+  wins: number
+  losses: number
+  gameCount: number
+  winPct: number
+  leagueRank: number
+  conferenceRank: number
+}
+
+export interface LeaguePlacement {
+  seasonYear: number
+  seasonLabel: string
+  selectedTeamId: number
+  selectedLeagueRank: number
+  selectedConferenceRank: number
+  selectedConference: string
+  teams: LeaguePlacementTeam[]
+}
+
 export interface HistoryFilter {
   teamId: number | null
   fromSeason: number

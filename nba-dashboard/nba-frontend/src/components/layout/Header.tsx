@@ -6,6 +6,7 @@ export default function Header() {
 
   const navItems = [
     { label: "History", path: "/history" },
+    { label: "Player History", path: "/player-history" },
     { label: "Today's Games", path: "/games" },
     { label: "Hot", path: "/hot" },
     { label: "Standings", path: "/standings" },

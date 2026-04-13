@@ -9,4 +9,5 @@ public class HistoryResponseDto
     public List<HistoryGameDto> BlowoutGames { get; set; } = [];
     public List<SeasonStatDatumDto> SeasonStats { get; set; } = [];
     public BestWorstGamesDto? BestWorstGames { get; set; }
+    public LeaguePlacementDto? LeaguePlacement { get; set; }
 }

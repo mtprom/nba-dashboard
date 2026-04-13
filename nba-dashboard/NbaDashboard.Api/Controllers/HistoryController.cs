@@ -227,6 +227,105 @@ public class HistoryController : ControllerBase
                 };
             }).ToList();
 
+            // -- League placement (single team + single season only) --
+            LeaguePlacementDto? leaguePlacement = null;
+            if (teamId.HasValue && fromSeason == toSeason)
+            {
+                var placementGames = await _db.Games
+                    .Where(g => g.Status == "Final"
+                             && !g.Postseason
+                             && g.HomeScore > 0
+                             && g.VisitorScore > 0
+                             && g.Date.Date <= todayUtc
+                             && seasonIds.Contains(g.SeasonId))
+                    .Select(g => new
+                    {
+                        g.SeasonId,
+                        g.HomeTeamId,
+                        g.VisitorTeamId,
+                        g.HomeScore,
+                        g.VisitorScore,
+                    })
+                    .AsNoTracking()
+                    .ToListAsync(ct);
+
+                if (placementGames.Count > 0)
+                {
+                    var placementTeamIds = placementGames
+                        .SelectMany(g => new[] { g.HomeTeamId, g.VisitorTeamId })
+                        .Distinct()
+                        .ToList();
+
+                    var teamLookup = await _db.Teams
+                        .Where(t => placementTeamIds.Contains(t.Id))
+                        .Select(t => new
+                        {
+                            t.Id,
+                            t.FullName,
+                            t.Abbreviation,
+                            t.Conference,
+                        })
+                        .AsNoTracking()
+                        .ToDictionaryAsync(t => t.Id, ct);
+
+                    var rankedTeams = placementGames
+                        .SelectMany(g => new[]
+                        {
+                            new { TeamId = g.HomeTeamId, IsWin = g.HomeScore > g.VisitorScore },
+                            new { TeamId = g.VisitorTeamId, IsWin = g.VisitorScore > g.HomeScore },
+                        })
+                        .GroupBy(r => r.TeamId)
+                        .Select(grp =>
+                        {
+                            teamLookup.TryGetValue(grp.Key, out var teamInfo);
+                            var wins = grp.Count(r => r.IsWin);
+                            var gameCount = grp.Count();
+
+                            return new LeaguePlacementTeamDto
+                            {
+                                TeamId = grp.Key,
+                                TeamName = teamInfo?.FullName ?? $"Team {grp.Key}",
+                                Abbreviation = teamInfo?.Abbreviation ?? grp.Key.ToString(),
+                                Conference = teamInfo?.Conference ?? "Unknown",
+                                Wins = wins,
+                                Losses = gameCount - wins,
+                                GameCount = gameCount,
+                                WinPct = gameCount > 0 ? Math.Round((double)wins / gameCount, 3) : 0,
+                            };
+                        })
+                        .OrderByDescending(t => t.WinPct)
+                        .ThenByDescending(t => t.Wins)
+                        .ThenBy(t => t.Abbreviation)
+                        .ToList();
+
+                    var conferenceRanks = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                    for (var i = 0; i < rankedTeams.Count; i++)
+                    {
+                        var team = rankedTeams[i];
+                        team.LeagueRank = i + 1;
+
+                        var nextConferenceRank = conferenceRanks.GetValueOrDefault(team.Conference) + 1;
+                        conferenceRanks[team.Conference] = nextConferenceRank;
+                        team.ConferenceRank = nextConferenceRank;
+                    }
+
+                    var selectedTeamPlacement = rankedTeams.FirstOrDefault(t => t.TeamId == teamId.Value);
+                    if (selectedTeamPlacement != null)
+                    {
+                        leaguePlacement = new LeaguePlacementDto
+                        {
+                            SeasonYear = fromSeason,
+                            SeasonLabel = $"{fromSeason}-{(fromSeason + 1) % 100:D2}",
+                            SelectedTeamId = teamId.Value,
+                            SelectedLeagueRank = selectedTeamPlacement.LeagueRank,
+                            SelectedConferenceRank = selectedTeamPlacement.ConferenceRank,
+                            SelectedConference = selectedTeamPlacement.Conference,
+                            Teams = rankedTeams,
+                        };
+                    }
+                }
+            }
+
             // -- Game log subsets --
             HistoryGameDto ToDto(dynamic g) => new()
             {
@@ -301,6 +400,7 @@ public class HistoryController : ControllerBase
                 BlowoutGames = blowoutGames,
                 SeasonStats = seasonStatsList,
                 BestWorstGames = bestWorstGames,
+                LeaguePlacement = leaguePlacement,
             };
 
             _cache.Set(cacheKey, result, new MemoryCacheEntryOptions
